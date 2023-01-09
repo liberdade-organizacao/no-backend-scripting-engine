@@ -1,0 +1,9 @@
+{
+  "server_port": ":8080",
+  "host": "localhost",
+  "port": "5434",
+  "user": "liberdade",
+  "password": "password",
+  "dbname": "baas"
+}
+
