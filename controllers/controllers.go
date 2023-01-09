@@ -14,11 +14,11 @@ type Controller struct {
 }
 
 func NewController(config map[string]string) (*Controller) {
-	dbhost := config["host"]
-	dbport := config["port"]
-	dbuser := config["user"]
-	dbpassword := config["password"]
-	dbname := config["dbname"]
+	dbhost := config["db_host"]
+	dbport := config["db_port"]
+	dbuser := config["db_user"]
+	dbpassword := config["db_password"]
+	dbname := config["db_name"]
 	connection := database.NewDatabase(dbhost, dbport, dbuser, dbpassword, dbname)
 
 	controller := Controller {
