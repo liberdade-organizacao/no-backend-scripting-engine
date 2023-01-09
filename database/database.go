@@ -39,3 +39,8 @@ func (connection *Conn) Query(query string) (*sql.Rows, error) {
     return result, err
 }
 
+// Closes the connection
+func (connection *Conn) Close() {
+    connection.Database.Close()
+}
+
