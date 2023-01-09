@@ -3,9 +3,9 @@ package main
 import (
     "fmt"
     "os"
-    "liberdade.bsb.br/baas/api/common"
-    "liberdade.bsb.br/baas/api/services"
-    "liberdade.bsb.br/baas/api/jobs"
+    "liberdade.bsb.br/baas/scripting/common"
+    "liberdade.bsb.br/baas/scripting/services"
+    "liberdade.bsb.br/baas/scripting/jobs"
 )
 
 func main() {

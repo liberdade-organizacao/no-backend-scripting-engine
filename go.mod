@@ -1,4 +1,4 @@
-module liberdade.bsb.br/baas/api
+module liberdade.bsb.br/baas/scripting
 
 go 1.19
 

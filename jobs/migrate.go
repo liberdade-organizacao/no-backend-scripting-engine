@@ -4,8 +4,8 @@ import (
     "fmt"
     "io/ioutil"
     "strings"
-    "liberdade.bsb.br/baas/api/common"
-    "liberdade.bsb.br/baas/api/database"
+    "liberdade.bsb.br/baas/scripting/common"
+    "liberdade.bsb.br/baas/scripting/database"
 )
 
 const (
