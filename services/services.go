@@ -31,13 +31,24 @@ func runAction(w http.ResponseWriter, r *http.Request) {
         io.WriteString(w, fmt.Sprintf("%s", err))
         return
     }
-    params := make(map[string]interface{})
-    err = json.Unmarshal(bodyBytes, &params)
+    actionInfo := make(map[string]interface{})
+    err = json.Unmarshal(bodyBytes, &actionInfo)
     if err != nil {
         io.WriteString(w, `{"error":"Failed to parse JSON"}`)
         return
     }
-    fmt.Printf("%#v\n", params)
+    appId := int(actionInfo["app_id"].(float64))
+    userId := int(actionInfo["user_id"].(float64))
+    actionName := actionInfo["action_name"]
+    actionParams := actionInfo["params"]
+   
+    // XXX delete these prints after checking if user has required permissions 
+    fmt.Printf("--- # action info\n")
+    fmt.Printf("app id: %d\n", appId)
+    fmt.Printf("user id: %d\n", userId)
+    fmt.Printf("action name: %s\n", actionName)
+    fmt.Printf("params: %#v\n", actionParams)
+
     io.WriteString(w, `{"error":"not implemented yet!"}`)
 
     // TODO ensure user has required permissions to run this action
