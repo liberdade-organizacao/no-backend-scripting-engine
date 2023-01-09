@@ -2,12 +2,10 @@
 
 set -e
 
-echo 'Ensure app is running first!'
+echo 'Ensure both app and database are running first!'
 
-# TODO create owner client
-# TODO create test app
-# TODO create test user
-# TODO create test action
+# TODO turn this into an actual unit test
+
 # creating required data
 alias psqlcmd='psql -h localhost -p 5434 -d baas -U liberdade -c' 
 
