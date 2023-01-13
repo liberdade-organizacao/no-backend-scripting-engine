@@ -114,13 +114,6 @@ func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Req
 	actionName := actionInfo["action_name"].(string)
 	actionParams := actionInfo["params"]
 
-	// XXX delete these prints after checking if user has required permissions 
-	fmt.Printf("--- # action info\n")
-	fmt.Printf("app id: %d\n", appId)
-	fmt.Printf("user id: %d\n", userId)
-	fmt.Printf("action name: %s\n", actionName)
-	fmt.Printf("params: %#v\n", actionParams)
-
 	err = controller.CheckPermission(appId, userId, actionName)
 	if err != nil {
 		io.WriteString(w, `{"error":"User does not required permissions to run this action"}`)
