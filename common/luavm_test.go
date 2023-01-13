@@ -16,15 +16,15 @@ func TestLuaVmWithParams(t *testing.T) {
 	function main(inlet)
 	  print(inlet)
 	  -- return inlet.name
-	  return "Joe"
+	  return "Marceline"
 	end
 	`
-	params := `name=Joe&age=28`
+	params := `name=Marceline&age=Marceline`
 	result, err := RunLuaMain(script, params, nil)
 	if err != nil {
 		t.Errorf("Couldn't run lua: %s", err)
 	}
-	if result != "Joe" {
+	if result != "Marceline" {
 		t.Errorf("Couldn`t get return value. Result:  '%s'", result)
 	}
 }
