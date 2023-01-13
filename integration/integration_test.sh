@@ -14,7 +14,7 @@ psqlcmd "INSERT INTO clients(email, password, is_admin) VALUES('test@go.dev','pa
 psqlcmd "INSERT INTO apps(owner_id,name) VALUES(1,'go test app') ON CONFLICT DO NOTHING;"
 psqlcmd "INSERT INTO app_memberships(app_id,client_id,role) VALUES(1,1,'admin') ON CONFLICT DO NOTHING RETURNING *;"
 psqlcmd "INSERT INTO users(app_id,email,password) VALUES(1,'test@go.dev','password') ON CONFLICT DO NOTHING;"
-psqlcmd "INSERT INTO actions(app_id,name,script) VALUES (1,'Test Action','') ON CONFLICT DO NOTHING;"
+psqlcmd "INSERT INTO actions(app_id,name,script) VALUES (1,'test_action.lua','') ON CONFLICT DO NOTHING;"
 psqlcmd "UPDATE actions SET script='$lua_script' WHERE id='1';"
 
 psqlcmd "SELECT * FROM clients;"
@@ -24,6 +24,6 @@ psqlcmd "SELECT * FROM actions;"
 
 curl -X POST \
      -H 'Content-Type: application/json' \
-     -d '{"action_name":"Test Action","app_id":1,"user_id":1,"params":{"name":"Joe","age":28}}' \
+     -d '{"action_name":"test_action.lua","app_id":1,"user_id":1,"action_param":"name=Marceline&age=1000"}' \
      http://localhost:8080/actions/run
 

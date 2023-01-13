@@ -88,7 +88,7 @@ func (controller *Controller) RunAction(appId int, userId int, actionName string
 //   app_id number
 //   user_id number
 //   action_name string
-//   params string
+//   action_param string
 func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Request) {
 	// performing initial validations
  	if r.Method != "POST" {
