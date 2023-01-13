@@ -31,8 +31,8 @@ func randString(n int) string {
 }
 
 const SCRIPT = `
-function main()
-  print("hello!")
+function main(params)
+  return "hello!"
 end
 `
 
@@ -115,8 +115,7 @@ func TestMainFlow(t *testing.T) {
 	appId := ids["app_id"]
 	userId := ids["user_id"]
 	actionName := scriptName
-	actionParams := make(map[string]string)
-	actionParams ["filename"] = "counter.txt"
+	actionParam := `{"filename":"counter.txt"}`
 
 	err = controller.CheckPermission(appId, userId, actionName)
 	if err != nil {
@@ -130,9 +129,13 @@ func TestMainFlow(t *testing.T) {
 		t.Errorf("Inexistent user has permissions to run an action")
 	}
 
-	err = controller.RunAction(appId, userId, actionName, actionParams)
+	result, err := controller.RunAction(appId, userId, actionName, actionParam)
 	if err != nil {
 		t.Fatalf("Failed to execute script: %s", err)
+		return
+	}
+	if result != "hello!" {
+		t.Errorf("Failed to execute script. Result: %s", result)
 		return
 	}
 }
