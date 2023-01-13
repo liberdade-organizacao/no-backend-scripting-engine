@@ -1,0 +1,107 @@
+package controllers
+
+import (
+	"testing"
+	"fmt"
+	"math/rand"
+	"time"
+//	"liberdade.bsb.br/baas/scripting/common"
+	"liberdade.bsb.br/baas/scripting/database"
+)
+
+// Creates a new configuration map assuming the default values
+func newConfig() map[string]string {
+	config := make(map[string]string)
+	config["db_host"] = "localhost"
+	config["db_port"] = "5434"
+	config["db_user"] = "liberdade"
+	config["db_password"] = "password"
+	config["db_name"] = "baas"
+	return config
+}
+
+const LETTER_BYTES = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+func randString(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = LETTER_BYTES[rand.Intn(len(LETTER_BYTES))]
+	}
+	return string(b)
+}
+
+const SCRIPT = `
+function main()
+  print("hello!")
+end
+`
+
+// Prepares the database for a test run. This assumes the required migrations have been executed already
+func prepareDatabase(connection *database.Conn, clientEmail string, scriptName string) error {
+	cmd := fmt.Sprintf("INSERT INTO clients(email,password,is_admin) VALUES('%s','pwd','off') ON CONFLICT DO NOTHING RETURNING id;", clientEmail)
+	rows, err := connection.Query(cmd)
+	clientId := -1
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		rows.Scan(&clientId)
+	}
+
+	cmd = fmt.Sprintf("INSERT INTO apps(owner_id,name) VALUES(%d,'%s') ON CONFLICT DO NOTHING RETURNING id;", clientId, randString(5))
+	rows, err = connection.Query(cmd)
+	appId := -1
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		rows.Scan(&appId)
+	}
+
+	cmd = fmt.Sprintf("INSERT INTO app_memberships(app_id,client_id,role) VALUES(%d,%d,'admin') ON CONFLICT DO NOTHING;", appId, clientId)
+	_, err = connection.Query(cmd)
+	if err != nil {
+		return err
+	}
+
+	cmd = fmt.Sprintf("INSERT INTO users(app_id,email,password) VALUES(%d,'%s','pwd') ON CONFLICT DO NOTHING RETURNING id;", appId, clientEmail)
+	rows, err = connection.Query(cmd)
+	if err != nil {
+		return err
+	}
+	userId := -1
+	for rows.Next() {
+		rows.Scan(&userId)
+	}
+
+	cmd = fmt.Sprintf("INSERT INTO actions(app_id,name,script) VALUES(%d,'%s','') ON CONFLICT DO NOTHING RETURNING id;", appId, scriptName)
+	rows, err = connection.Query(cmd)
+	if err != nil {
+		return err
+	}
+	actionId := -1
+	for rows.Next() {
+		rows.Scan(&actionId)
+	}
+
+	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", SCRIPT, actionId)
+	_, err = connection.Query(cmd) 
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func TestMainFlow(t *testing.T) {
+	rand.Seed(time.Now().UnixNano())
+	config := newConfig()
+	controller := NewController(config)
+	clientEmail := fmt.Sprintf("%s@go.dev", randString(5))
+	scriptName := fmt.Sprintf("L%s.lua", randString(5))
+	err := prepareDatabase(controller.Connection, clientEmail, scriptName)
+	if err != nil {
+		t.Errorf("Failed to prepare database: %s", err)
+	}
+}
+

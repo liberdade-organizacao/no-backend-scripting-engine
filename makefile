@@ -9,6 +9,7 @@ psql:
 test:
 	go test ./common/*.go
 	go test ./database/*.go
+	go test ./controllers/*.go
 
 .PHONY: build
 build: test
