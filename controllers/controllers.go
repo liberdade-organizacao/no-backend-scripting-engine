@@ -64,7 +64,7 @@ func (controller *Controller) CheckPermission(appId int, userId int, actionName 
 
 // Runs an action as identified by an app, a user, and the action name.
 // The action may accept parameters as input
-func (controller *Controller) RunAction(appId int, userId int, actionName string, params interface{}) error {
+func (controller *Controller) RunAction(appId int, userId int, actionName string, params string) (string, error) {
 	query := fmt.Sprintf("SELECT script FROM actions WHERE app_id='%d' AND name='%s';", appId, actionName)
 	actionScript := "" 
 	rows, err := controller.Connection.Query(query) 
@@ -75,7 +75,7 @@ func (controller *Controller) RunAction(appId int, userId int, actionName string
 		rows.Scan(&actionScript)
 	}
 
-	return common.RunLuaMain(actionScript, controller.Connection) 
+	return common.RunLuaMain(actionScript, params, controller.Connection) 
 }
 
 /************
@@ -88,7 +88,7 @@ func (controller *Controller) RunAction(appId int, userId int, actionName string
 //   app_id number
 //   user_id number
 //   action_name string
-//   params JSON
+//   params string
 func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Request) {
 	// performing initial validations
  	if r.Method != "POST" {
@@ -112,7 +112,7 @@ func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Req
 	appId := int(actionInfo["app_id"].(float64))
 	userId := int(actionInfo["user_id"].(float64))
 	actionName := actionInfo["action_name"].(string)
-	actionParams := actionInfo["params"]
+	actionParam := actionInfo["action_param"].(string)
 
 	err = controller.CheckPermission(appId, userId, actionName)
 	if err != nil {
@@ -120,13 +120,14 @@ func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	err = controller.RunAction(appId, userId, actionName, actionParams)
+	result, err := controller.RunAction(appId, userId, actionName, actionParam)
 	if err != nil {
 		io.WriteString(w, `{"error":"Could not run Lua script"}`)
 		return
 	}
 
-	io.WriteString(w, `{"error":null}`)
+	payload := fmt.Sprintf(`{"error":null,"result":%s}`, result)
+	io.WriteString(w, payload)
 	return
 }
 
