@@ -10,8 +10,8 @@ func StartServer(config map[string]string) {
 	controller := controllers.NewController(config)
 	defer controller.Close()
 
-	http.HandleFunc("/health", controller.CheckHealth)
-	http.HandleFunc("/actions/run", controller.RunAction)
+	http.HandleFunc("/health", controller.HandleCheckHealth)
+	http.HandleFunc("/actions/run", controller.HandleRunAction)
 
 	http.ListenAndServe(port, nil)
 }
