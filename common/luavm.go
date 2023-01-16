@@ -12,6 +12,11 @@ import (
 // TODO include function to check if a file exists
 // TODO include upsert function
 
+const SETUP_SCRIPT = `
+io = nil
+os = nil
+`
+
 // Runs a raw Lua script
 func RunLua(script string) error {
 	L := lua.NewState()
@@ -24,8 +29,13 @@ func RunLua(script string) error {
 func RunLuaMain(actionScript string, inputData string, connection *database.Conn) (string, error) {
 	L := lua.NewState()
 	defer L.Close()
+
+	err := L.DoString(SETUP_SCRIPT)
+	if err != nil {
+		return "", err
+	}
     
-	err := L.DoString(actionScript)
+	err = L.DoString(actionScript)
 	if err != nil {
 		return "", err
 	}
