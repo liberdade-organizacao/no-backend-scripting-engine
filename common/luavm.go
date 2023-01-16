@@ -61,8 +61,8 @@ end
 `
 
 // Generates a new file upload function for a user in an app
-func generateUploadFileFunction(appId int, userId int, connection *database.Conn) lua.LGFunction {
-	const rawUploadFileQuery = `
+func generateUploadUserFileFunction(appId int, userId int, connection *database.Conn) lua.LGFunction {
+	const rawUploadUserFileQuery = `
 INSERT INTO files (filename, filepath, app_id, owner_id, contents)
 VALUES (
 	'%s',
@@ -80,8 +80,8 @@ RETURNING *;
 		rawContents := L.CheckString(2)
 		contents := encodeBase64(rawContents)
 		filepath := fmt.Sprintf("a%d/u%d/%s", appId, userId, filename)
-		uploadFileQuery := fmt.Sprintf(
-			rawUploadFileQuery, 
+		uploadUserFileQuery := fmt.Sprintf(
+			rawUploadUserFileQuery, 
 			filename, 
 			filepath, 
 			appId, 
@@ -90,7 +90,7 @@ RETURNING *;
 			contents,
 		)
 
-		_, err := connection.Query(uploadFileQuery)
+		_, err := connection.Query(uploadUserFileQuery)
 		if err != nil {
 			toPush := fmt.Sprintf("Failed to upload file: %#v", err)
 			L.Push(lua.LString(toPush))	
@@ -143,52 +143,24 @@ func RunLua(script string) error {
 	return L.DoString(script)
 }
 
-// Runs a main function from Lua and returns its result
-// This Lua main function must receive a string and return a string.
-func RunLuaMain(actionScript string, inputData string, connection *database.Conn) (string, error) {
-	L := lua.NewState()
-	defer L.Close()
-
-	err := L.DoString(SETUP_SCRIPT)
-	if err != nil {
-		return "", err
-	}
-
-	err = L.DoString(actionScript)
-	if err != nil {
-		return "", err
-	}
-
-	err = L.CallByParam(lua.P{
-		Fn: L.GetGlobal("main"),
-		NRet: 1,
-		Protect: true,
-	}, lua.LString(inputData))
-	if err != nil {
-		return "", err
-	}
-	ret := L.Get(-1)
-	L.Pop(1)
-
-	return ret.String(), nil
-}
-
 // Runs a Lua action from a main function.
 // This Lua main function must receive a string and return a string.
 func RunLuaAction(appId int, userId int, actionScript string, inputData string, connection *database.Conn) (string, error) {
 	L := lua.NewState()
 	defer L.Close()
 
+	// include utils
 	err := L.DoString(SETUP_SCRIPT)
 	if err != nil {
 		return "", err
 	}
 
+	// include database operations
 	if connection != nil {
-		uploadFileFunction := generateUploadFileFunction(appId, userId, connection)
+		uploadUserFileFunction := generateUploadUserFileFunction(appId, userId, connection)
 		downloadFileFunction := generateDownloadFileFunction(appId, userId, connection)
 
-		L.SetGlobal("upload_file", L.NewFunction(uploadFileFunction))
+		L.SetGlobal("upload_file", L.NewFunction(uploadUserFileFunction))
 		L.SetGlobal("download_file", L.NewFunction(downloadFileFunction))
 	}
 
