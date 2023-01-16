@@ -19,13 +19,41 @@ func TestLuaVmWithParams(t *testing.T) {
 	  return "Marceline"
 	end
 	`
-	params := `name=Marceline&age=Marceline`
+	params := `name=Marceline&age=1000`
 	result, err := RunLuaMain(script, params, nil)
 	if err != nil {
 		t.Errorf("Couldn't run lua: %s", err)
 	}
 	if result != "Marceline" {
 		t.Errorf("Couldn`t get return value. Result:  '%s'", result)
+	}
+}
+
+func TestLuaCanAccessUnderlyingOs(t *testing.T) {
+	script := `
+	 function main(param)
+	  local result = "no"
+
+	  -- open file
+	  local fp = io.open(param, "r")
+	  if fp then
+	   result = "yes"
+	   fp:close()
+	  end
+
+	  -- run local script
+	  os.execute("ls")
+
+	  return result
+	 end
+	`
+	param := "luavm_test.go"
+	result, err := RunLuaMain(script, param, nil)
+	if err == nil {
+		t.Errorf("Could run inappropriate lua script")
+	}
+	if result == "yes" {
+		t.Errorf("It's possible to open a file")
 	}
 }
 
