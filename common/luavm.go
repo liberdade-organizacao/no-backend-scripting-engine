@@ -7,12 +7,8 @@ import (
 	"liberdade.bsb.br/baas/scripting/database"
 )
 
-// TODO include function to create files for a user
-// TODO include function to read files for a user
-// TODO include function to update files for a user
 // TODO include functino to delete fiels for a user
 // TODO include function to check if a file exists
-// TODO include upsert function
 
 /*********************
  * UTILITY FUNCTIONS *
@@ -80,8 +76,8 @@ UPDATE SET contents=E'%s'
 RETURNING *;
 `
 	return func(L *lua.LState) int {
-		filename := L.ToString(1)
-		rawContents := L.ToString(1)  // TODO find out why `L.ToString(2)` does not work
+		filename := L.CheckString(1)
+		rawContents := L.CheckString(2)
 		contents := encodeBase64(rawContents)
 		filepath := fmt.Sprintf("a%d/u%d/%s", appId, userId, filename)
 		uploadFileQuery := fmt.Sprintf(
