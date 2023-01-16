@@ -1,8 +1,8 @@
 package common
 
 import (
-    "github.com/yuin/gopher-lua"
-    "liberdade.bsb.br/baas/scripting/database"
+	"github.com/yuin/gopher-lua"
+	"liberdade.bsb.br/baas/scripting/database"
 )
 
 // TODO include function to create files for a user

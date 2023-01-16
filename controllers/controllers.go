@@ -126,7 +126,7 @@ func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	payload := fmt.Sprintf(`{"error":null,"result":%s}`, result)
+	payload := fmt.Sprintf(`{"error":null,"result":"%s"}`, result)
 	io.WriteString(w, payload)
 	return
 }
