@@ -20,7 +20,7 @@ func TestLuaVmWithParams(t *testing.T) {
 	end
 	`
 	params := `name=Marceline&age=1000`
-	result, err := RunLuaMain(script, params, nil)
+	result, err := RunLuaAction(0, 0, script, params, nil)
 	if err != nil {
 		t.Errorf("Couldn't run lua: %s", err)
 	}
@@ -48,7 +48,7 @@ func TestLuaCanAccessUnderlyingOs(t *testing.T) {
 	 end
 	`
 	param := "luavm_test.go"
-	result, err := RunLuaMain(script, param, nil)
+	result, err := RunLuaAction(0, 0, script, param, nil)
 	if err == nil {
 		t.Errorf("Could run inappropriate lua script")
 	}
