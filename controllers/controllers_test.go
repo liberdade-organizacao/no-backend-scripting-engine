@@ -144,7 +144,7 @@ function main(inlet)
  -- TODO upload file to database with random content 
  local params = parse_url_params(inlet)
  local filename = params["filename"]
- local contents = params["content"]
+ local contents = params["contents"]
  local oops = upload_file(filename, contents)
  local result = "ok"
 
@@ -200,7 +200,7 @@ func TestScriptsCanUploadAndDownloadFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to run download action: %s", err)
 	}
-	if result != "greeting.txt" {
+	if result != "hello" {
 		t.Fatalf("Download action was not executed properly: %s", result)
 	}
 }
