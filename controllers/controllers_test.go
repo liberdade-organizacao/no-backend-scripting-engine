@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/rand"
 	"time"
-//	"liberdade.bsb.br/baas/scripting/common"
 	"liberdade.bsb.br/baas/scripting/database"
 )
 
