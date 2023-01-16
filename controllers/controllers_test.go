@@ -145,7 +145,7 @@ function main(inlet)
  local params = parse_url_params(inlet)
  local filename = params["filename"]
  local contents = params["contents"]
- local oops = upload_file(filename, contents)
+ local oops = upload_user_file(filename, contents)
  local result = "ok"
 
  if oops ~= nil then
@@ -160,7 +160,7 @@ const DOWNLOAD_SCRIPT = `
 function main(inlet)
  local params = parse_url_params(inlet) 
  local filename = params["filename"]
- local contents = download_file(filename)
+ local contents = download_user_file(filename)
  return contents
 end
 `
