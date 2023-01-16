@@ -60,8 +60,7 @@ function parse_url_params(raw_param)
 end
 `
 
-// Generates a new file upload function for a user in an app
-func generateUploadUserFileFunction(appId int, userId int, connection *database.Conn) lua.LGFunction {
+func uploadFile(appId int, userId int, filename string, rawContents string, connection *database.Conn) error {
 	const rawUploadUserFileQuery = `
 INSERT INTO files (filename, filepath, app_id, owner_id, contents)
 VALUES (
@@ -75,25 +74,35 @@ ON CONFLICT (filepath) DO
 UPDATE SET contents=E'%s'
 RETURNING *;
 `
-	return func(L *lua.LState) int {
-		filename := L.CheckString(1)
-		rawContents := L.CheckString(2)
-		contents := encodeBase64(rawContents)
-		filepath := fmt.Sprintf("a%d/u%d/%s", appId, userId, filename)
-		uploadUserFileQuery := fmt.Sprintf(
-			rawUploadUserFileQuery, 
-			filename, 
-			filepath, 
-			appId, 
-			userId, 
-			contents, 
-			contents,
-		)
+	contents := encodeBase64(rawContents)
+	filepath := fmt.Sprintf("a%d/u%d/%s", appId, userId, filename)
+	uploadUserFileQuery := fmt.Sprintf(
+		rawUploadUserFileQuery, 
+		filename, 
+		filepath, 
+		appId, 
+		userId, 
+		contents, 
+		contents,
+	)
+	_, err := connection.Query(uploadUserFileQuery)
+	if err != nil {
+		return err
+	}
 
-		_, err := connection.Query(uploadUserFileQuery)
+	return nil
+}
+
+// generates a function to upload a file to an app
+func generateUploadAppFileFunction(appId int, connection *database.Conn) lua.LGFunction {
+	return func(L *lua.LState) int {
+		userId := int(L.CheckNumber(1))
+		filename := L.CheckString(2)
+		contents := L.CheckString(3)
+		err := uploadFile(appId, userId, filename, contents, connection)
+
 		if err != nil {
-			toPush := fmt.Sprintf("Failed to upload file: %#v", err)
-			L.Push(lua.LString(toPush))	
+			L.Push(lua.LString("Failed to upload string"))
 			return 1
 		}
 
@@ -102,31 +111,71 @@ RETURNING *;
 	}
 }
 
-// Generates a new file upload function for a user in an app
-func generateDownloadFileFunction(appId int, userId int, connection *database.Conn) lua.LGFunction {
+// Generates a function to upload files to a particular user
+func generateUploadUserFileFunction(appId int, userId int, connection *database.Conn) lua.LGFunction {
+	return func(L *lua.LState) int {
+		filename := L.CheckString(1)
+		contents := L.CheckString(2)
+		err := uploadFile(appId, userId, filename, contents, connection)
+		if err != nil {
+			L.Push(lua.LString("Failed to upload file!"))
+			return 1
+		}
+		L.Push(lua.LNil)
+		return 1
+	}
+}
+
+// Downloads a file from a user from an app
+func downloadFile(appId int, userId int, filename string, connection *database.Conn) (string, error) {
 	const rawDownloadFileQuery = `SELECT contents FROM files WHERE filepath='%s';`
+	filepath := fmt.Sprintf("a%d/u%d/%s", appId, userId, filename)
+	downloadFileQuery := fmt.Sprintf(
+		rawDownloadFileQuery, 
+		filepath,
+	)
+
+	rows, err := connection.Query(downloadFileQuery)
+	if err != nil {
+		return "", err
+	}
+
+	rawContents := ""
+	for rows.Next() {
+		rows.Scan(&rawContents)
+	}
+	contents, err := decodeBase64(rawContents)
+	if err != nil {
+		return "", err
+	}
+
+	return contents, nil
+}
+
+// Generates a new file download function for a user in an app
+func generateDownloadAppFileFunction(appId int, connection *database.Conn) lua.LGFunction {
+	return func(L *lua.LState) int {
+		userId := int(L.CheckNumber(1))
+		filename := L.CheckString(2)
+		contents, err := downloadFile(appId, userId, filename, connection)
+		if err != nil {
+			L.Push(lua.LNil)
+			return 1
+		}
+		L.Push(lua.LString(contents))
+		return 1
+	}
+}
+
+// Generates a new user file download function for a user in an app
+func generateDownloadUserFileFunction(appId int, userId int, connection *database.Conn) lua.LGFunction {
 	return func(L *lua.LState) int {
 		filename := L.ToString(1)
-		filepath := fmt.Sprintf("a%d/u%d/%s", appId, userId, filename)
-		downloadFileQuery := fmt.Sprintf(rawDownloadFileQuery, filepath)
-
-		rows, err := connection.Query(downloadFileQuery)
+		contents, err := downloadFile(appId, userId, filename, connection)
 		if err != nil {
-			toPush := fmt.Sprintf("Failed to download file: %#v", err)
-			L.Push(lua.LString(toPush))	
+			L.Push(lua.LNil)
 			return 1
 		}
-
-		rawContents := ""
-		for rows.Next() {
-			rows.Scan(&rawContents)
-		}
-		contents, err := decodeBase64(rawContents)
-		if err != nil {
-			L.Push(lua.LString("File is corrupted!"))
-			return 1
-		}
-
 		L.Push(lua.LString(contents))
 		return 1
 	}
@@ -158,10 +207,14 @@ func RunLuaAction(appId int, userId int, actionScript string, inputData string, 
 	// include database operations
 	if connection != nil {
 		uploadUserFileFunction := generateUploadUserFileFunction(appId, userId, connection)
-		downloadFileFunction := generateDownloadFileFunction(appId, userId, connection)
+		uploadAppFileFunction := generateUploadAppFileFunction(appId, connection)
+		downloadUserFileFunction := generateDownloadUserFileFunction(appId, userId, connection)
+		downloadAppFileFunction := generateDownloadAppFileFunction(appId, connection)
 
-		L.SetGlobal("upload_file", L.NewFunction(uploadUserFileFunction))
-		L.SetGlobal("download_file", L.NewFunction(downloadFileFunction))
+		L.SetGlobal("upload_user_file", L.NewFunction(uploadUserFileFunction))
+		L.SetGlobal("upload_file", L.NewFunction(uploadAppFileFunction))
+		L.SetGlobal("download_user_file", L.NewFunction(downloadUserFileFunction))
+		L.SetGlobal("download_file", L.NewFunction(downloadAppFileFunction))
 	}
 
 	err = L.DoString(actionScript)
