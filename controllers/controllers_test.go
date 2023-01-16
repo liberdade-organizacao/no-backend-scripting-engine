@@ -141,7 +141,6 @@ func TestMainFlow(t *testing.T) {
 
 const UPLOAD_SCRIPT = `
 function main(inlet)
- -- TODO upload file to database with random content 
  local params = parse_url_params(inlet)
  local filename = params["filename"]
  local contents = params["contents"]
