@@ -36,7 +36,7 @@ end
 `
 
 // Prepares the database for a test run. This assumes the required migrations have been executed already
-func prepareDatabase(connection *database.Conn, clientEmail string, scriptName string) (map[string]int, error) {
+func prepareDatabase(connection *database.Conn, clientEmail string, scriptName string, script string) (map[string]int, error) {
 	state := make(map[string]int)
 
 	cmd := fmt.Sprintf("INSERT INTO clients(email,password,is_admin) VALUES('%s','pwd','off') ON CONFLICT DO NOTHING RETURNING id;", clientEmail)
@@ -90,7 +90,7 @@ func prepareDatabase(connection *database.Conn, clientEmail string, scriptName s
 	}
 	state["action_id"] = actionId
 
-	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", SCRIPT, actionId)
+	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", script, actionId)
 	_, err = connection.Query(cmd) 
 	if err != nil {
 		return state, err
@@ -105,7 +105,7 @@ func TestMainFlow(t *testing.T) {
 	controller := NewController(config)
 	clientEmail := fmt.Sprintf("%s@go.dev", randString(5))
 	scriptName := fmt.Sprintf("L%s.lua", randString(5))
-	ids, err := prepareDatabase(controller.Connection, clientEmail, scriptName)
+	ids, err := prepareDatabase(controller.Connection, clientEmail, scriptName, SCRIPT)
 	if err != nil {
 		t.Fatalf("Failed to prepare database: %s", err)
 		return
@@ -136,6 +136,72 @@ func TestMainFlow(t *testing.T) {
 	if result != "hello!" {
 		t.Errorf("Failed to execute script. Result: %s", result)
 		return
+	}
+}
+
+const UPLOAD_SCRIPT = `
+function main(inlet)
+ -- TODO upload file to database with random content 
+ local params = parse_url_params(inlet)
+ local filename = params["filename"]
+ local contents = params["content"]
+ local oops = upload_file(filename, contents)
+ local result = "ok"
+
+ if oops ~= nil then
+  result = oops
+ end
+
+ return result
+end
+`
+
+const DOWNLOAD_SCRIPT = `
+function main(inlet)
+ local params = parse_url_params(inlet) 
+ local filename = params["filename"]
+ local contents = download_file(filename)
+ return contents
+end
+`
+
+func TestScriptsCanUploadAndDownloadFiles(t *testing.T) {
+	rand.Seed(time.Now().UnixNano())
+	config := newConfig()
+	controller := NewController(config)
+	clientEmail := fmt.Sprintf("%s@go.dev", randString(7))
+	scriptName := fmt.Sprintf("L%s.lua", randString(8))
+	ids, err := prepareDatabase(controller.Connection, clientEmail, scriptName, UPLOAD_SCRIPT)
+	if err != nil {
+		t.Fatalf("Failed to prepare database: %s", err)
+	}
+
+	appId := ids["app_id"]
+	userId := ids["user_id"]
+	actionName := scriptName
+	actionParam := "filename=greeting.txt&contents=hello"
+	result, err := controller.RunAction(appId, userId, actionName, actionParam)
+	if err != nil {
+		t.Fatalf("Failed to run upload action: %s", err)
+	}
+	if result != "ok" {
+		t.Fatalf("Upload action was not executed properly: %s", result)
+	}
+
+	actionId := ids["action_id"]
+	cmd := fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DOWNLOAD_SCRIPT, actionId)
+	_, err = controller.Connection.Query(cmd) 
+	if err != nil {
+		t.Fatalf("Failed to upload script: %s", err)
+	}
+
+	actionParam = "filename=greeting.txt"
+	result, err = controller.RunAction(appId, userId, actionName, actionParam)
+	if err != nil {
+		t.Fatalf("Failed to run download action: %s", err)
+	}
+	if result != "greeting.txt" {
+		t.Fatalf("Download action was not executed properly: %s", result)
 	}
 }
 

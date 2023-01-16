@@ -75,7 +75,7 @@ func (controller *Controller) RunAction(appId int, userId int, actionName string
 		rows.Scan(&actionScript)
 	}
 
-	return common.RunLuaMain(actionScript, params, controller.Connection) 
+	return common.RunLuaAction(appId, userId, actionScript, params, controller.Connection) 
 }
 
 /************
