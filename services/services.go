@@ -10,7 +10,7 @@ import (
 const DEFAULT_PORT = ":7781"
 
 func StartServer() {
-	port := os.Getenv("SERVER_PORT")
+	port := os.Getenv("PORT")
 	if port == "" {
 		port = DEFAULT_PORT
 	}
