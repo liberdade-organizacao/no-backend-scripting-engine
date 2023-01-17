@@ -8,17 +8,6 @@ import (
 	"liberdade.bsb.br/baas/scripting/database"
 )
 
-// Creates a new configuration map assuming the default values
-func newConfig() map[string]string {
-	config := make(map[string]string)
-	config["db_host"] = "localhost"
-	config["db_port"] = "5434"
-	config["db_user"] = "liberdade"
-	config["db_password"] = "password"
-	config["db_name"] = "baas"
-	return config
-}
-
 const LETTER_BYTES = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 func randString(n int) string {
@@ -101,8 +90,7 @@ func prepareDatabase(connection *database.Conn, clientEmail string, scriptName s
 
 func setupBasicTest(script string) (*Controller, map[string]int, string, error) {
 	rand.Seed(time.Now().UnixNano())
-	config := newConfig()
-	controller := NewController(config)
+	controller := NewController()
 	clientEmail := fmt.Sprintf("%s@go.dev", randString(5))
 	scriptName := fmt.Sprintf("L%s.lua", randString(5))
 	ids, err := prepareDatabase(controller.Connection, clientEmail, scriptName, script)
