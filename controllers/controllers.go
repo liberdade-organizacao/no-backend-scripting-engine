@@ -16,13 +16,8 @@ type Controller struct {
 }
 
 // Creates a new controller
-func NewController(config map[string]string) (*Controller) {
-	dbhost := config["db_host"]
-	dbport := config["db_port"]
-	dbuser := config["db_user"]
-	dbpassword := config["db_password"]
-	dbname := config["db_name"]
-	connection := database.NewDatabase(dbhost, dbport, dbuser, dbpassword, dbname)
+func NewController() (*Controller) {
+	connection := database.NewDatabase()
 
 	controller := Controller {
 		Connection: &connection,

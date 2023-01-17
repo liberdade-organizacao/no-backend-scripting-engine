@@ -17,14 +17,5 @@ build: test
 
 .PHONY: run
 run: build
-	./main.exe
-
-.PHONY: migrate_up
-migrate_up: build
-	./main.exe migrate_up
-
-.PHONY: migrate_down
-migrate_down: build
-	./main.exe migrate_down
-
+	./main.exe up
 

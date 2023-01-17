@@ -1,13 +1,22 @@
 package services
 
 import (
+	"os"
+	"fmt"
 	"net/http"
 	"liberdade.bsb.br/baas/scripting/controllers"
 )
 
-func StartServer(config map[string]string) {
-	port := config["server_port"]
-	controller := controllers.NewController(config)
+const DEFAULT_PORT = ":7781"
+
+func StartServer() {
+	port := os.Getenv("SERVER_PORT")
+	if port == "" {
+		port = DEFAULT_PORT
+	}
+	fmt.Printf("Starting server at %s", port)
+
+	controller := controllers.NewController()
 	defer controller.Close()
 
 	http.HandleFunc("/health", controller.HandleCheckHealth)
