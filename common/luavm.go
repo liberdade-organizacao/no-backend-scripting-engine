@@ -7,9 +7,6 @@ import (
 	"liberdade.bsb.br/baas/scripting/database"
 )
 
-// TODO include functino to delete fiels for a user
-// TODO include function to check if a file exists
-
 /*********************
  * UTILITY FUNCTIONS *
  *********************/
@@ -26,6 +23,10 @@ func decodeBase64(s string) (string, error) {
 		return "", err
 	}
 	return string(sd), nil
+}
+
+func newFilepath(appId int, userId int, filename string) string {
+	return fmt.Sprintf("a%d/u%d/%s", appId, userId, filename)
 }
 
 /*****************
@@ -60,6 +61,7 @@ function parse_url_params(raw_param)
 end
 `
 
+// Generic function to upload a file to an app's database
 func uploadFile(appId int, userId int, filename string, rawContents string, connection *database.Conn) error {
 	const rawQuery = `
 INSERT INTO files (filename, filepath, app_id, owner_id, contents)
@@ -75,7 +77,7 @@ UPDATE SET contents=E'%s'
 RETURNING *;
 `
 	contents := encodeBase64(rawContents)
-	filepath := fmt.Sprintf("a%d/u%d/%s", appId, userId, filename)
+	filepath := newFilepath(appId, userId, filename)
 	query := fmt.Sprintf(
 		rawQuery,
 		filename, 
@@ -129,7 +131,7 @@ func generateUploadUserFileFunction(appId int, userId int, connection *database.
 // Downloads a file from a user from an app
 func downloadFile(appId int, userId int, filename string, connection *database.Conn) (string, error) {
 	const rawQuery = `SELECT contents FROM files WHERE filepath='%s';`
-	filepath := fmt.Sprintf("a%d/u%d/%s", appId, userId, filename)
+	filepath := newFilepath(appId, userId, filename)
 	query := fmt.Sprintf(rawQuery, filepath)
 
 	rows, err := connection.Query(query)
@@ -178,6 +180,126 @@ func generateDownloadUserFileFunction(appId int, userId int, connection *databas
 	}
 }
 
+// Generic function to check if a file exists in the database
+func checkFile(appId int, userId int, filename string, connection *database.Conn) (bool, error) {
+	const rawQuery = `SELECT COUNT(*) FROM files WHERE filepath='%s';`
+	filepath := newFilepath(appId, userId, filename)
+	query := fmt.Sprintf(rawQuery, filepath)
+
+	rows, err := connection.Query(query)
+	if err != nil {
+		return false, err
+	}
+	count := -1
+	for rows.Next() {
+		rows.Scan(&count)
+	}
+	result := false
+	if count >= 1 {
+		result = true
+	}
+
+	return result, nil
+}
+
+// Generates a function that checks if a file exists within an app
+func generateCheckAppFileFunction(appId int, connection *database.Conn) lua.LGFunction {
+	return func(L *lua.LState) int {
+		userId := int(L.CheckNumber(1))
+		filename := L.CheckString(2)
+		exists, err := checkFile(appId, userId, filename, connection)
+		if err != nil {
+			L.Push(lua.LNil)
+			return 1
+		}
+		if exists {
+			L.Push(lua.LTrue)
+		} else {
+			L.Push(lua.LFalse)
+		}
+		return 1
+	}
+}
+
+// Generates a function that checks if a file exists for a user
+func generateCheckUserFileFunction(appId int, userId int, connection *database.Conn) lua.LGFunction {
+	return func(L *lua.LState) int {
+		filename := L.CheckString(1)
+		exists, err := checkFile(appId, userId, filename, connection)
+		if err != nil {
+			L.Push(lua.LNil)
+			return 1
+		}
+		if exists {
+			L.Push(lua.LTrue)
+		} else {
+			L.Push(lua.LFalse)
+		}
+		return 1
+	}
+}
+
+// Generic function to delete a file
+func deleteFile(appId int, userId int, filename string, connection *database.Conn) (bool, error) {
+	rawQuery := `DELETE FROM files WHERE filepath='%s' RETURNING *;`
+	filepath := newFilepath(appId, userId, filename)
+	query := fmt.Sprintf(rawQuery, filepath)
+	rows, err := connection.Query(query)
+
+	if err != nil {
+		return false, err
+	}
+
+	deletedCount := 0
+	for rows.Next() {
+		deletedCount++
+	}
+
+	result := false
+	if deletedCount > 0 {
+		result = true
+	}
+
+	return result, nil
+}
+
+// Generates a function to delete a file in an app
+func generateDeleteAppFileFunction(appId int, connection *database.Conn) lua.LGFunction {
+	return func(L *lua.LState) int {
+		userId := int(L.CheckNumber(1))
+		filename := L.CheckString(2)
+		deleted, err := deleteFile(appId, userId, filename, connection)
+		if err != nil {
+			L.Push(lua.LNil)
+			return 1
+		}
+		if deleted == true {
+			L.Push(lua.LTrue)
+		} else {
+			L.Push(lua.LFalse)
+		}
+		return 1
+	}
+}
+
+// Generates a function to delete a user file
+func generateDeleteUserFileFunction(appId int, userId int, connection *database.Conn) lua.LGFunction {
+	return func(L *lua.LState) int {
+		filename := L.CheckString(1)
+		deleted, err := deleteFile(appId, userId, filename, connection)
+		if err != nil {
+			L.Push(lua.LNil)
+			return 1
+		}
+		if deleted == true {
+			L.Push(lua.LTrue)
+		} else {
+			L.Push(lua.LFalse)
+		}
+		return 1
+	}
+}
+
 /******************
  * MAIN FUNCTIONS *
  ******************/
@@ -207,13 +329,22 @@ func RunLuaAction(appId int, userId int, actionScript string, inputData string, 
 		uploadAppFileFunction := generateUploadAppFileFunction(appId, connection)
 		downloadUserFileFunction := generateDownloadUserFileFunction(appId, userId, connection)
 		downloadAppFileFunction := generateDownloadAppFileFunction(appId, connection)
+		checkUserFileFunction := generateCheckUserFileFunction(appId, userId, connection)
+		checkAppFileFunction := generateCheckAppFileFunction(appId, connection)
+		deleteUserFileFunction := generateDeleteUserFileFunction(appId, userId, connection)
+		deleteAppFileFunction := generateDeleteAppFileFunction(appId, connection)
 
 		L.SetGlobal("upload_user_file", L.NewFunction(uploadUserFileFunction))
 		L.SetGlobal("upload_file", L.NewFunction(uploadAppFileFunction))
 		L.SetGlobal("download_user_file", L.NewFunction(downloadUserFileFunction))
 		L.SetGlobal("download_file", L.NewFunction(downloadAppFileFunction))
+		L.SetGlobal("check_user_file", L.NewFunction(checkUserFileFunction))
+		L.SetGlobal("check_file", L.NewFunction(checkAppFileFunction))
+		L.SetGlobal("delete_user_file", L.NewFunction(deleteUserFileFunction))
+		L.SetGlobal("delete_file", L.NewFunction(deleteAppFileFunction))
 	}
 
+	// parsing and running main function
 	err = L.DoString(actionScript)
 	if err != nil {
 		return "", err

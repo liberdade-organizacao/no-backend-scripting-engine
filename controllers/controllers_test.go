@@ -99,13 +99,18 @@ func prepareDatabase(connection *database.Conn, clientEmail string, scriptName s
 	return state, nil
 }
 
-func TestMainFlow(t *testing.T) {
+func setupBasicTest(script string) (*Controller, map[string]int, string, error) {
 	rand.Seed(time.Now().UnixNano())
 	config := newConfig()
 	controller := NewController(config)
 	clientEmail := fmt.Sprintf("%s@go.dev", randString(5))
 	scriptName := fmt.Sprintf("L%s.lua", randString(5))
-	ids, err := prepareDatabase(controller.Connection, clientEmail, scriptName, SCRIPT)
+	ids, err := prepareDatabase(controller.Connection, clientEmail, scriptName, script)
+	return controller, ids, scriptName, err
+}
+
+func TestMainFlow(t *testing.T) {
+	controller, ids, scriptName, err := setupBasicTest(SCRIPT)
 	if err != nil {
 		t.Fatalf("Failed to prepare database: %s", err)
 		return
@@ -165,12 +170,7 @@ end
 `
 
 func TestScriptsCanUploadAndDownloadFiles(t *testing.T) {
-	rand.Seed(time.Now().UnixNano())
-	config := newConfig()
-	controller := NewController(config)
-	clientEmail := fmt.Sprintf("%s@go.dev", randString(7))
-	scriptName := fmt.Sprintf("L%s.lua", randString(8))
-	ids, err := prepareDatabase(controller.Connection, clientEmail, scriptName, UPLOAD_SCRIPT)
+	controller, ids, scriptName, err := setupBasicTest(UPLOAD_SCRIPT)
 	if err != nil {
 		t.Fatalf("Failed to prepare database: %s", err)
 	}
@@ -201,6 +201,105 @@ func TestScriptsCanUploadAndDownloadFiles(t *testing.T) {
 	}
 	if result != "hello" {
 		t.Fatalf("Download action was not executed properly: %s", result)
+	}
+}
+
+const CHECK_SCRIPT = `
+function main(param)
+ if check_user_file(param) then
+  return "ok"
+ else
+  return "ko"
+ end
+end
+`
+
+const DELETE_SCRIPT = `
+function main(param)
+ if delete_user_file(param) then
+  return "ok"
+ else
+  return "ko"
+ end
+end
+`
+
+func TestScriptsCanDeleteFiles(t *testing.T) {
+	controller, ids, scriptName, err := setupBasicTest(UPLOAD_SCRIPT)
+	if err != nil {
+		t.Fatalf("Failed to prepare database: %s", err)
+	}
+
+	filename := "delete_me.txt"
+	appId := ids["app_id"]
+	userId := ids["user_id"]
+	actionName := scriptName
+	actionParam := fmt.Sprintf("filename=%s&contents=I want to delete files", filename)
+	result, err := controller.RunAction(appId, userId, actionName, actionParam)
+	if err != nil {
+		t.Fatalf("Failed to run upload action: %s", err)
+	}
+	if result != "ok" {
+		t.Fatalf("Upload action was not executed properly: %s", result)
+	}
+
+	actionId := ids["action_id"]
+	cmd := fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", CHECK_SCRIPT, actionId)
+	_, err = controller.Connection.Query(cmd) 
+	if err != nil {
+		t.Fatalf("Failed to upload script: %s", err)
+	}
+
+	actionParam = filename
+	result, err = controller.RunAction(appId, userId, actionName, actionParam)
+	if err != nil {
+		t.Fatalf("Failed to run check action: %s", err)
+	}
+	if result != "ok" {
+		t.Fatalf("Check action was not executed properly: %s", result)
+	}
+
+
+	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DELETE_SCRIPT, actionId)
+	_, err = controller.Connection.Query(cmd) 
+	if err != nil {
+		t.Fatalf("Failed to upload script: %s", err)
+	}
+
+	actionParam = filename
+	result, err = controller.RunAction(appId, userId, actionName, actionParam)
+	if err != nil {
+		t.Fatalf("Failed to run delete action: %s", err)
+	}
+	if result != "ok" {
+		t.Fatalf("Delete action was not executed properly: %s", result)
+	}
+	
+	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", CHECK_SCRIPT, actionId)
+	_, err = controller.Connection.Query(cmd) 
+	if err != nil {
+		t.Fatalf("Failed to upload script: %s", err)
+	}
+
+	actionParam = filename
+	result, err = controller.RunAction(appId, userId, actionName, actionParam)
+	if err != nil {
+		t.Fatalf("Failed to run check action again: %s", err)
+	}
+	if result != "ko" {
+		t.Fatal("Check action was executed properly when it shouldn't")
+	}
+
+	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DOWNLOAD_SCRIPT, actionId)
+	_, err = controller.Connection.Query(cmd) 
+	if err != nil {
+		t.Fatalf("Failed to upload script: %s", err)
+	}
+
+	actionParam = fmt.Sprintf("filename=%s", filename)
+	result, _ = controller.RunAction(appId, userId, actionName, actionParam)
+	if result != "" {
+		t.Fatal("Downloaded inexistent file")
 	}
 }
 
