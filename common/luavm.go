@@ -59,6 +59,37 @@ function parse_url_params(raw_param)
  end
  return outlet
 end
+
+function split_lines(inlet)
+ local lines = {}
+ for s in inlet:gmatch("[^\n]") do
+   table.insert(lines, s)
+ end
+ return lines
+end
+
+function from_recfile(raw_recfile)
+ local outlet = {}
+ local is_header = true
+ local temp = {}
+ local key_value = {}
+
+ for line in raw_recfile:gmatch("(.-)\n") do
+  if is_header and line == "" then
+   is_header = false
+   temp = {}
+  elseif line == "" then
+   table.insert(outlet, temp)
+   temp = {}
+  else
+   key_value = split_string(line, ": ")
+   temp[key_value[1]] = key_value[2]
+  end
+ end
+ table.insert(outlet, temp)
+
+ return outlet
+end
 `
 
 // Generic function to upload a file to an app's database
