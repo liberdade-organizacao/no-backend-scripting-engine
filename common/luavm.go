@@ -90,6 +90,21 @@ function from_recfile(raw_recfile)
 
  return outlet
 end
+
+function to_recfile(recs, title)
+ local outlet = "%rec: " .. title .. "\n\n"
+
+ for i, rec in pairs(recs) do
+  for key, value in pairs(rec) do
+   outlet = outlet .. key .. ": " .. value .. "\n"
+  end
+  if i < #recs then
+   outlet = outlet .. "\n"
+  end
+ end
+
+ return outlet
+end
 `
 
 // Generic function to upload a file to an app's database
