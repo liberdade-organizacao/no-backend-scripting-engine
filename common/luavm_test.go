@@ -80,9 +80,46 @@ year: 2010
 
 	result, err := RunLuaAction(0, 0, script, param, nil)
 	if err != nil {
-		t.Errorf("Failed to support recfiles: %s", err)
+		t.Errorf("Failed to support reaeding recfiles: %s", err)
 	}
 	if result != "3" {
 		t.Errorf("Failed to convert from recfile to Lua table")
+	}
+
+	script = `
+function main(param)
+ local result = "ko"
+ local t = {
+  {
+   who = "finn",
+   what = "human"
+  },
+  { 
+   who = "jake",
+   what = "dog"
+  }
+ }
+ local s = [[%rec: heroes
+
+who: finn
+what: human
+
+who: jake
+what: dog
+]]
+ local c = to_recfile(t, "heroes")
+ if c == s then
+  result = "ok"
+ end
+ return result
+end
+	`
+	param = `nope`
+	result, err = RunLuaAction(0, 0, script, param, nil)
+	if err != nil {
+		t.Errorf("Failed to support writing recfiles: %s", err)
+	}
+	if result != "ok" {
+		t.Errorf("Failed to convert to recfile from Lua table")
 	}
 }
