@@ -60,12 +60,12 @@ function parse_url_params(raw_param)
  return outlet
 end
 
-function split_lines(inlet)
- local lines = {}
- for s in inlet:gmatch("[^\n]") do
-   table.insert(lines, s)
+function is_empty(t)
+ local result = true
+ for _, v in pairs(t) do
+  result = false
  end
- return lines
+ return result
 end
 
 function from_recfile(raw_recfile)
@@ -86,7 +86,9 @@ function from_recfile(raw_recfile)
    temp[key_value[1]] = key_value[2]
   end
  end
- table.insert(outlet, temp)
+ if not is_empty(temp) then
+  table.insert(outlet, temp)
+ end
 
  return outlet
 end
