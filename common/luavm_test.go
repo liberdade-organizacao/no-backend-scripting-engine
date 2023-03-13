@@ -57,3 +57,32 @@ func TestLuaCanAccessUnderlyingOs(t *testing.T) {
 	}
 }
 
+func TestRecfileSupport(t *testing.T) {
+	script := `
+	 function main(raw_recfile)
+	  local recs = from_recfile(raw_recfile)
+	  return #recs
+	 end
+	`
+	param := `%rec: Cars
+%type name: string
+%type year: int
+
+name: Renault Logan
+year: 2009
+
+name: Fiat Palio
+year: 2012
+
+name: Peogeot 206
+year: 2010
+`
+
+	result, err := RunLuaAction(0, 0, script, param, nil)
+	if err != nil {
+		t.Errorf("Failed to support recfiles: %s", err)
+	}
+	if result != "3" {
+		t.Errorf("Failed to convert from recfile to Lua table")
+	}
+}
