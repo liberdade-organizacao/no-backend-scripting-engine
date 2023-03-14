@@ -1,8 +1,10 @@
 package common
 
 import (
-	"fmt"
 	"encoding/base64"
+	"errors"
+	"fmt"
+	"time"
 	"github.com/yuin/gopher-lua"
 	"liberdade.bsb.br/baas/scripting/database"
 )
@@ -359,7 +361,7 @@ func RunLua(script string) error {
 	return L.DoString(script)
 }
 
-// Runs a Lua action from a main function.
+// Runs a Lua action from a main function
 // This Lua main function must receive a string and return a string.
 func RunLuaAction(appId int, userId int, actionScript string, inputData string, connection *database.Conn) (string, error) {
 	L := lua.NewState()
@@ -410,5 +412,35 @@ func RunLuaAction(appId int, userId int, actionScript string, inputData string, 
 	L.Pop(1)
 
 	return ret.String(), nil
+}
+
+// Struct to hold the result of a call to a Lua script
+type LuaActionResult struct {
+	Result string
+	Error error
+}
+
+// Just like RunLuaAction but wraps the result in a struct
+func runLuaActionWrapped(appId int, userId int, actionScript string, inputData string, connection *database.Conn) LuaActionResult {
+	result, err := RunLuaAction(appId, userId, actionScript, inputData, connection)
+	return LuaActionResult{
+		Result: result,
+		Error: err,
+	}
+}
+
+// Just like RunLuaAction but returns an error if the script takes more than 5 seconds
+// to execuet
+func RunLuaActionTimeout(appId int, userId int, actionScript string, inputData string, connection *database.Conn) (string, error) {
+	result := make(chan LuaActionResult, 1)
+	go func() {
+		result <- runLuaActionWrapped(appId, userId, actionScript, inputData, connection)
+	}()
+	select {
+	case <-time.After(5 * time.Second):
+		return  "", errors.New("5 seconds timeout")
+	case result := <-result:
+		return result.Result, result.Error
+	}
 }
 
