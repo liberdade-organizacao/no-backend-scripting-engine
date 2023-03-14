@@ -154,3 +154,52 @@ func TestRunActionWithTimeout(t *testing.T) {
 	}
 }
 
+func TestTimestampSupport(t *testing.T) {
+	// comparing valid strings
+	script := `
+	 function main(param)
+	  local timestamp = now()
+	  local result = ""
+	  local comparison = compare_timestamps(timestamp, param)
+
+	  if comparison > 0 then
+	   result = "bigger"
+	  elseif comparison == 0 then
+	   result = "equal"
+	  else
+	   result = "smaller"
+	  end
+
+	  return result
+	 end
+	`
+	param := `1986-07-14T12:00:00`
+	result, err := RunLuaAction(0, 0, script, param, nil)
+	if err != nil {
+		t.Errorf("Failed timestamp support script: %s", err)	
+	}
+	if result != "bigger" {
+		t.Errorf("Timestamp comparison is wrong")
+	}
+
+	// comparing invalid strings
+	script = `
+	 function main(param)
+	  local comparison = compare_timestamps(now(), param)
+	  local result = "not nil"
+	  if comparison == nil then
+	   result = "nil"
+	  end
+	  return result
+	 end
+	`
+	param = `invalid timestamp`
+	result, err = RunLuaAction(0, 0, script, param, nil)
+	if err != nil {
+		t.Errorf("Timestamp support did not fail gracefully")
+	}
+	if result != "nil" {
+		t.Errorf("Invalid timestamp comparison is wrong")
+	}
+}
+
