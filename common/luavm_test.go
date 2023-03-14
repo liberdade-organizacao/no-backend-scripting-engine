@@ -123,3 +123,34 @@ end
 		t.Errorf("Failed to convert to recfile from Lua table")
 	}
 }
+
+func TestRunActionWithTimeout(t *testing.T) {
+	script := `
+	 function main(param)
+	  local i = 0
+	  while true do
+	   i = i + 0
+	  end
+	  return param
+	 end
+	`
+	param := `nope`
+	result, err := RunLuaActionTimeout(0, 0, script, param, nil)
+	if err == nil {
+		t.Errorf("Somehow a timed out action hasn't returned an error")
+	}
+
+	script = `
+	 function main(param)
+	  return param
+	 end
+	`
+	result, err = RunLuaActionTimeout(0, 0, script, param, nil)
+	if err != nil {
+		t.Errorf("Failed to run regular function through a timeout")
+	}
+	if result != param {
+		t.Errorf("Timeout function result was tempered with")
+	}
+}
+
