@@ -350,6 +350,37 @@ func generateDeleteUserFileFunction(appId int, userId int, connection *database.
 	}
 }
 
+const TIMESTAMP_FORMAT = "2006-01-02T15:04:05"
+
+func nowFunction(L *lua.LState) int {
+	now := time.Now()
+	timestamp := now.Format(TIMESTAMP_FORMAT)
+	L.Push(lua.LString(timestamp))
+	return 1
+}
+
+// `compare_timestamps(a ,b)` will return the following results:
+// - `1` if a > b
+// - `0` if a = b
+// - `-1` otherwise
+func compareTimestampsFunction(L *lua.LState) int {
+	referenceTimestamp := L.CheckString(1)
+	comparisonTimestamp := L.CheckString(2)
+	referenceTime, err := time.Parse(TIMESTAMP_FORMAT, referenceTimestamp)
+	if err != nil {
+		L.Push(lua.LNil)
+		return 1
+	}
+	comparisonTime, err := time.Parse(TIMESTAMP_FORMAT, comparisonTimestamp)
+	if err != nil {
+		L.Push(lua.LNil)
+		return 1
+	}
+
+	L.Push(lua.LNumber(referenceTime.Compare(comparisonTime)))
+	return 1
+}
+
 /******************
  * MAIN FUNCTIONS *
  ******************/
@@ -372,6 +403,8 @@ func RunLuaAction(appId int, userId int, actionScript string, inputData string, 
 	if err != nil {
 		return "", err
 	}
+	L.SetGlobal("now", L.NewFunction(nowFunction))
+	L.SetGlobal("compare_timestamps", L.NewFunction(compareTimestampsFunction))
 
 	// include database operations
 	if connection != nil {
