@@ -58,6 +58,7 @@ func TestLuaCanAccessUnderlyingOs(t *testing.T) {
 }
 
 func TestRecfileSupport(t *testing.T) {
+	// can convert from recfiles
 	script := `
 	 function main(raw_recfile)
 	  local recs = from_recfile(raw_recfile)
@@ -86,6 +87,7 @@ year: 2010
 		t.Errorf("Failed to convert from recfile to Lua table")
 	}
 
+	// can convert to recfiles
 	script = `
 function main(param)
  local result = "ko"
@@ -121,6 +123,44 @@ end
 	}
 	if result != "ok" {
 		t.Errorf("Failed to convert to recfile from Lua table")
+	}
+	
+	// values are correctly extracted
+	script = `
+function main(param)
+ local t = from_recfile(param)
+ local is_set = false
+ local value = ""
+
+ for _, rec in pairs(t) do
+  local current_value = rec["field"]
+  if not is_set then
+   is_set = true
+   value = current_value
+  elseif current_value ~= value then
+   return "ko"
+  else
+   value = current_value
+  end
+ end
+
+ return value
+end
+	`
+	param = `%rec: test
+
+field: string with spaces
+
+field: string with spaces
+
+field: string with spaces
+`
+	result, err = RunLuaAction(0, 0, script, param, nil)
+	if err != nil {
+		t.Errorf("Failed to ensure value extraction: %s", err)
+	}
+	if result != "string with spaces" {
+		t.Errorf("Failed to extract correct values from recfile. Result: '%s'", result)
 	}
 }
 

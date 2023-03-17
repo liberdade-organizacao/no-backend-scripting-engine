@@ -74,7 +74,6 @@ function from_recfile(raw_recfile)
  local outlet = {}
  local is_header = true
  local temp = {}
- local key_value = {}
 
  for line in raw_recfile:gmatch("(.-)\n") do
   if is_header and line == "" then
@@ -84,8 +83,9 @@ function from_recfile(raw_recfile)
    table.insert(outlet, temp)
    temp = {}
   else
-   key_value = split_string(line, ": ")
-   temp[key_value[1]] = key_value[2]
+   for key, value in line:gmatch("(.-): (.*)") do
+    temp[key] = value
+   end
   end
  end
  if not is_empty(temp) then
