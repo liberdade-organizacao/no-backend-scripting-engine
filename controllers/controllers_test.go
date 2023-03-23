@@ -383,7 +383,5 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 	if result != "" {
 		t.Fatalf("Download app file action was not run properly again: %s", result)
 	}
-
-
 }
 
