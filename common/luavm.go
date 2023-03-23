@@ -122,8 +122,8 @@ INSERT INTO files (filename, filepath, app_id, owner_id, contents)
 VALUES (
 	'%s',
 	'%s',
-	'%d',
-	'%d',
+	%d,
+	%s,
 	E'%s'
 )
 ON CONFLICT (filepath) DO
@@ -131,12 +131,16 @@ UPDATE SET contents=E'%s'
 RETURNING *;
 `
 	contents := encodeBase64(rawContents)
+	ownerIdValue := "NULL"
+	if ownerId > 0 {
+		ownerIdValue = fmt.Sprintf("%d", ownerId)
+	}
 	query := fmt.Sprintf(
 		rawQuery,
 		filename, 
 		filepath, 
 		appId, 
-		ownerId, 
+		ownerIdValue, 
 		contents, 
 		contents,
 	)
@@ -149,7 +153,7 @@ RETURNING *;
 }
 
 // generates a function to upload a file to an app
-func generateUploadAppFileFunction(appId int, connection *database.Conn) lua.LGFunction {
+func generateUploadFileFunction(appId int, connection *database.Conn) lua.LGFunction {
 	return func(L *lua.LState) int {
 		userId := int(L.CheckNumber(1))
 		filename := L.CheckString(2)
@@ -183,37 +187,13 @@ func generateUploadUserFileFunction(appId int, userId int, connection *database.
 	}
 }
 
-// "generates" a random owner id for a global file.
-// all files in BaaS should have a user as an owner. Since a global has no
-// owner, we assign this to a random user.
-// Returns -1 if this process fails for some reason
-func generateOwnerId(appId int, connection *database.Conn) int {
-	const rawQuery = `SELECT id FROM users WHERE app_id=%d LIMIT 1;`
-	query := fmt.Sprintf(rawQuery, appId)
-	rows, err := connection.Query(query)
-	ownerId := -1
-	if err != nil {
-		return ownerId
-	}
-	for rows.Next() {
-		rows.Scan(&ownerId)
-	}
-	return ownerId
-}
-
 // generates a function to upload a global file to an app
-func generateUploadGlobalAppFileFunction(appId int, connection *database.Conn) lua.LGFunction {
+func generateUploadAppFileFunction(appId int, connection *database.Conn) lua.LGFunction {
 	return func(L *lua.LState) int {
 		filename := L.CheckString(1)
 		contents := L.CheckString(2)
 		filepath := newGlobalFilepath(appId, filename)
-		ownerId := generateOwnerId(appId, connection)
-		if ownerId < 0 {
-			L.Push(lua.LString("Monkeypatch failed :("))
-			return 1
-		}
-
-		err := uploadFile(appId, ownerId, filename, filepath, contents, connection)
+		err := uploadFile(appId, -1, filename, filepath, contents, connection)
 		if err != nil {
 			L.Push(lua.LString("Failed to upload file!"))
 			return 1
@@ -247,7 +227,7 @@ func downloadFile(filepath string, connection *database.Conn) (string, error) {
 }
 
 // Generates a new file download function for a user in an app
-func generateDownloadAppFileFunction(appId int, connection *database.Conn) lua.LGFunction {
+func generateDownloadFileFunction(appId int, connection *database.Conn) lua.LGFunction {
 	return func(L *lua.LState) int {
 		userId := int(L.CheckNumber(1))
 		filename := L.CheckString(2)
@@ -278,9 +258,9 @@ func generateDownloadUserFileFunction(appId int, userId int, connection *databas
 }
 
 // Generates a new file download function for the whole app
-func generateDownloadGlobalAppFileFunction(appId int, connection *database.Conn) lua.LGFunction {
+func generateDownloadAppFileFunction(appId int, connection *database.Conn) lua.LGFunction {
 	return func(L *lua.LState) int {
-		filename := L.CheckString(2)
+		filename := L.CheckString(1)
 		filepath := newGlobalFilepath(appId, filename)
 		contents, err := downloadFile(filepath, connection)
 		if err != nil {
@@ -317,7 +297,7 @@ func checkFile(appId int, userId int, filename string, connection *database.Conn
 }
 
 // Generates a function that checks if a file exists within an app
-func generateCheckAppFileFunction(appId int, connection *database.Conn) lua.LGFunction {
+func generateCheckFileFunction(appId int, connection *database.Conn) lua.LGFunction {
 	return func(L *lua.LState) int {
 		userId := int(L.CheckNumber(1))
 		filename := L.CheckString(2)
@@ -354,9 +334,8 @@ func generateCheckUserFileFunction(appId int, userId int, connection *database.C
 }
 
 // Generic function to delete a file
-func deleteFile(appId int, userId int, filename string, connection *database.Conn) (bool, error) {
+func deleteFile(filepath string, connection *database.Conn) (bool, error) {
 	rawQuery := `DELETE FROM files WHERE filepath='%s' RETURNING *;`
-	filepath := newFilepath(appId, userId, filename)
 	query := fmt.Sprintf(rawQuery, filepath)
 	rows, err := connection.Query(query)
 
@@ -378,11 +357,12 @@ func deleteFile(appId int, userId int, filename string, connection *database.Con
 }
 
 // Generates a function to delete a file in an app
-func generateDeleteAppFileFunction(appId int, connection *database.Conn) lua.LGFunction {
+func generateDeleteFileFunction(appId int, connection *database.Conn) lua.LGFunction {
 	return func(L *lua.LState) int {
 		userId := int(L.CheckNumber(1))
 		filename := L.CheckString(2)
-		deleted, err := deleteFile(appId, userId, filename, connection)
+		filepath := newFilepath(appId, userId, filename)
+		deleted, err := deleteFile(filepath, connection)
 		if err != nil {
 			L.Push(lua.LNil)
 			return 1
@@ -400,7 +380,27 @@ func generateDeleteAppFileFunction(appId int, connection *database.Conn) lua.LGF
 func generateDeleteUserFileFunction(appId int, userId int, connection *database.Conn) lua.LGFunction {
 	return func(L *lua.LState) int {
 		filename := L.CheckString(1)
-		deleted, err := deleteFile(appId, userId, filename, connection)
+		filepath := newFilepath(appId, userId, filename)
+		deleted, err := deleteFile(filepath, connection)
+		if err != nil {
+			L.Push(lua.LNil)
+			return 1
+		}
+		if deleted == true {
+			L.Push(lua.LTrue)
+		} else {
+			L.Push(lua.LFalse)
+		}
+		return 1
+	}
+}
+
+// Generates a function to delete a file in an app
+func generateDeleteAppFileFunction(appId int, connection *database.Conn) lua.LGFunction {
+	return func(L *lua.LState) int {
+		filename := L.CheckString(1)
+		filepath := newGlobalFilepath(appId, filename)
+		deleted, err := deleteFile(filepath, connection)
 		if err != nil {
 			L.Push(lua.LNil)
 			return 1
@@ -473,26 +473,28 @@ func RunLuaAction(appId int, userId int, actionScript string, inputData string, 
 	// include database operations
 	if connection != nil {
 		uploadUserFileFunction := generateUploadUserFileFunction(appId, userId, connection)
+		uploadFileFunction := generateUploadFileFunction(appId, connection)
 		uploadAppFileFunction := generateUploadAppFileFunction(appId, connection)
-		uploadGlobalAppFileFunction := generateUploadGlobalAppFileFunction(appId, connection)
 		downloadUserFileFunction := generateDownloadUserFileFunction(appId, userId, connection)
+		downloadFileFunction := generateDownloadFileFunction(appId, connection)
 		downloadAppFileFunction := generateDownloadAppFileFunction(appId, connection)
-		downloadGlobalAppFileFunction := generateDownloadGlobalAppFileFunction(appId, connection)
 		checkUserFileFunction := generateCheckUserFileFunction(appId, userId, connection)
-		checkAppFileFunction := generateCheckAppFileFunction(appId, connection)
+		checkFileFunction := generateCheckFileFunction(appId, connection)
 		deleteUserFileFunction := generateDeleteUserFileFunction(appId, userId, connection)
+		deleteFileFunction := generateDeleteFileFunction(appId, connection)
 		deleteAppFileFunction := generateDeleteAppFileFunction(appId, connection)
 
 		L.SetGlobal("upload_user_file", L.NewFunction(uploadUserFileFunction))
-		L.SetGlobal("upload_file", L.NewFunction(uploadAppFileFunction))
-		L.SetGlobal("upload_app_file", L.NewFunction(uploadGlobalAppFileFunction))
+		L.SetGlobal("upload_file", L.NewFunction(uploadFileFunction))
+		L.SetGlobal("upload_app_file", L.NewFunction(uploadAppFileFunction))
 		L.SetGlobal("download_user_file", L.NewFunction(downloadUserFileFunction))
-		L.SetGlobal("download_file", L.NewFunction(downloadAppFileFunction))
-		L.SetGlobal("download_app_file", L.NewFunction(downloadGlobalAppFileFunction))
+		L.SetGlobal("download_file", L.NewFunction(downloadFileFunction))
+		L.SetGlobal("download_app_file", L.NewFunction(downloadAppFileFunction))
 		L.SetGlobal("check_user_file", L.NewFunction(checkUserFileFunction))
-		L.SetGlobal("check_file", L.NewFunction(checkAppFileFunction))
+		L.SetGlobal("check_file", L.NewFunction(checkFileFunction))
 		L.SetGlobal("delete_user_file", L.NewFunction(deleteUserFileFunction))
-		L.SetGlobal("delete_file", L.NewFunction(deleteAppFileFunction))
+		L.SetGlobal("delete_file", L.NewFunction(deleteFileFunction))
+		L.SetGlobal("delete_app_file", L.NewFunction(deleteAppFileFunction))
 	}
 
 	// parsing and running main function
@@ -530,8 +532,7 @@ func runLuaActionWrapped(appId int, userId int, actionScript string, inputData s
 	}
 }
 
-// Just like RunLuaAction but returns an error if the script takes more than 5 seconds
-// to execuet
+// Just like RunLuaAction but returns an error if the script takes more than 5 seconds to execute
 func RunLuaActionTimeout(appId int, userId int, actionScript string, inputData string, connection *database.Conn) (string, error) {
 	result := make(chan LuaActionResult, 1)
 	go func() {

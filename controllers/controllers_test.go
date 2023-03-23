@@ -309,6 +309,17 @@ function main(inlet)
  return download_app_file(inlet)
 end
 `
+
+const DELETE_APP_FILE_SCRIPT = `
+function main(inlet)
+ if delete_app_file(inlet) == true then
+  return "ok"
+ else
+  return "ko"
+ end
+end
+`
+
 func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 	controller, ids, scriptName, err := setupBasicTest(UPLOAD_APP_FILE_SCRIPT)
 	if err != nil {
@@ -344,5 +355,35 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 	if result != contents {
 		t.Fatalf("Download app file action was not run properly: %s", result)
 	}
+
+	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DELETE_APP_FILE_SCRIPT, actionId)
+	_, err = controller.Connection.Query(cmd) 
+	if err != nil {
+		t.Fatalf("Failed to update app file script again: %s", err)
+	}
+
+	result, err = controller.RunAction(appId, userId, actionName, actionParam)
+	if err != nil {
+		t.Fatalf("Failed to run delete app file action: %s", err)
+	}
+	if result != "ok" {
+		t.Fatalf("Delete app file action was not run properly: %s", result)
+	}
+
+	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DOWNLOAD_APP_FILE_SCRIPT, actionId)
+	_, err = controller.Connection.Query(cmd) 
+	if err != nil {
+		t.Fatalf("Failed to update app file script one more time: %s", err)
+	}
+
+	result, err = controller.RunAction(appId, userId, actionName, actionParam)
+	if err != nil {
+		t.Fatalf("Failed to run download app file action again: %s", err)
+	}
+	if result != "" {
+		t.Fatalf("Download app file action was not run properly again: %s", result)
+	}
+
+
 }
 
