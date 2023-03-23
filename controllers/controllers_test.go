@@ -291,3 +291,58 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 	}
 }
 
+const UPLOAD_APP_FILE_SCRIPT = `
+function main(inlet)
+ local params = parse_url_params(inlet)
+ local filename = params["filename"]
+ local contents = params["contents"]
+ if upload_app_file(filename, contents) == nil then
+  return "ok"
+ else
+  return "ko"
+ end
+end
+`
+
+const DOWNLOAD_APP_FILE_SCRIPT = `
+function main(inlet)
+ return download_app_file(inlet)
+end
+`
+func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
+	controller, ids, scriptName, err := setupBasicTest(UPLOAD_APP_FILE_SCRIPT)
+	if err != nil {
+		t.Fatalf("Failed to prepare database: %s", err)
+	}
+
+	filename := "global_app_file.txt"
+	appId := ids["app_id"]
+	userId := ids["user_id"]
+	contents := "Coraline is one of the best movies ever"
+	actionName := scriptName
+	actionParam := fmt.Sprintf("filename=%s&contents=%s", filename, contents)
+	result, err := controller.RunAction(appId, userId, actionName, actionParam)
+	if err != nil {
+		t.Fatalf("Failed to run upload app file action: %s", err)
+	}
+	if result != "ok" {
+		t.Fatalf("Upload app file action was not executed properly: %s", result)
+	}
+
+	actionId := ids["action_id"]
+	cmd := fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DOWNLOAD_APP_FILE_SCRIPT, actionId)
+	_, err = controller.Connection.Query(cmd) 
+	if err != nil {
+		t.Fatalf("Failed to update app file script: %s", err)
+	}
+
+	actionParam = filename
+	result, err = controller.RunAction(appId, userId, actionName, actionParam)
+	if err != nil {
+		t.Fatalf("Failed to run download app file action: %s", err)
+	}
+	if result != contents {
+		t.Fatalf("Download app file action was not run properly: %s", result)
+	}
+}
+
