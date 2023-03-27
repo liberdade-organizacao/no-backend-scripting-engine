@@ -385,3 +385,48 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 	}
 }
 
+const EMAIL_TO_ID_SCRIPT = `
+function main(email)
+ return "" .. user_email_to_id(email)
+end
+`
+
+const ID_TO_EMAIL_SCRIPT = `
+function main(user_id)
+ return user_id_to_email(tonumber(user_id))
+end
+`
+
+func TestScriptsCanConvertBetweenUserEmailsAndIds(t *testing.T) {
+	controller, ids, actionName, err := setupBasicTest(ID_TO_EMAIL_SCRIPT)
+	if err != nil {
+		t.Fatalf("Failed to prepare database: %s", err)
+	}
+
+	appId := ids["app_id"]
+	userId := ids["user_id"]
+	expectedResult := fmt.Sprintf("%d", userId)
+	actionParam := expectedResult
+	result, err := controller.RunAction(appId, userId, actionName, actionParam)
+	if err != nil {
+		t.Fatalf("Failed to run 'user id to email' action: %s", err)
+	}
+	userEmail := result
+
+	actionId := ids["action_id"]
+	cmd := fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", EMAIL_TO_ID_SCRIPT, actionId)
+	_, err = controller.Connection.Query(cmd) 
+	if err != nil {
+		t.Fatalf("Failed to update app file script: %s", err)
+	}
+
+	actionParam = userEmail
+	result, err = controller.RunAction(appId, userId, actionName, actionParam)
+	if err != nil {
+		t.Fatalf("Failed to run 'user email to id' action: %s", err)
+	}
+	if result != expectedResult {
+		t.Fatalf("Got wrong user id")
+	}
+}
+
