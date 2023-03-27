@@ -414,6 +414,53 @@ func generateDeleteAppFileFunction(appId int, connection *database.Conn) lua.LGF
 	}
 }
 
+func generateUserEmailToIdFunction(appId int, connection *database.Conn) lua.LGFunction {
+	return func(L *lua.LState) int {
+		userEmail := L.CheckString(1)
+		rawQuery := `SELECT id FROM users WHERE email='%s' AND app_id=%d;`
+		query := fmt.Sprintf(rawQuery, userEmail, appId)
+		rows, err := connection.Query(query)
+		if err != nil {
+			L.Push(lua.LNil)
+			return 1
+		}
+		userId := 0
+		for rows.Next() {
+			rows.Scan(&userId)
+		}
+		if userId <= 0 {
+			L.Push(lua.LNil)
+			return 1
+		}
+		L.Push(lua.LNumber(userId))
+		return 1
+	}
+}
+
+func generateUserIdToEmailFunction(appId int, connection *database.Conn) lua.LGFunction {
+	return func(L *lua.LState) int {
+		userId := L.CheckNumber(1)
+		rawQuery := `SELECT email FROM users WHERE id=%d AND app_id=%d;`
+		query := fmt.Sprintf(rawQuery, userId, appId)
+		fmt.Printf("%s\n", query)
+		rows, err := connection.Query(query)
+		if err != nil {
+			L.Push(lua.LNil)
+			return 1
+		}
+		userEmail := ""
+		for rows.Next() {
+			rows.Scan(&userEmail)
+		}
+		if userEmail == "" {
+			L.Push(lua.LNil)
+			return 1
+		}
+		L.Push(lua.LString(userEmail))
+		return 1
+	}
+}
+
 const TIMESTAMP_FORMAT = "2006-01-02T15:04:05"
 
 func nowFunction(L *lua.LState) int {
@@ -483,6 +530,8 @@ func RunLuaAction(appId int, userId int, actionScript string, inputData string, 
 		deleteUserFileFunction := generateDeleteUserFileFunction(appId, userId, connection)
 		deleteFileFunction := generateDeleteFileFunction(appId, connection)
 		deleteAppFileFunction := generateDeleteAppFileFunction(appId, connection)
+		userEmailToIdFunction := generateUserEmailToIdFunction(appId, connection)
+		userIdToEmailFunction := generateUserIdToEmailFunction(appId, connection)
 
 		L.SetGlobal("upload_user_file", L.NewFunction(uploadUserFileFunction))
 		L.SetGlobal("upload_file", L.NewFunction(uploadFileFunction))
@@ -495,6 +544,8 @@ func RunLuaAction(appId int, userId int, actionScript string, inputData string, 
 		L.SetGlobal("delete_user_file", L.NewFunction(deleteUserFileFunction))
 		L.SetGlobal("delete_file", L.NewFunction(deleteFileFunction))
 		L.SetGlobal("delete_app_file", L.NewFunction(deleteAppFileFunction))
+		L.SetGlobal("user_email_to_id", L.NewFunction(userEmailToIdFunction))
+		L.SetGlobal("user_id_to_email", L.NewFunction(userIdToEmailFunction))
 	}
 
 	// parsing and running main function
