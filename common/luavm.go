@@ -4,7 +4,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"os"
 	"time"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/yuin/gopher-lua"
 	"liberdade.bsb.br/baas/scripting/database"
 )
@@ -12,6 +14,8 @@ import (
 /*********************
  * UTILITY FUNCTIONS *
  *********************/
+
+const DEFAULT_SALT = "SALT"
 
 // Encodes to base64
 func encodeBase64(s string) string {
@@ -114,6 +118,73 @@ function to_recfile(recs, title)
  return outlet
 end
 `
+
+func luaEncodeBase64(L *lua.LState) int {
+	inlet := L.CheckString(1)
+	outlet := encodeBase64(inlet)
+	L.Push(lua.LString(outlet))
+	return 1
+}
+
+func luaDecodeBase64(L *lua.LState) int {
+	inlet := L.CheckString(1)
+	outlet, err := decodeBase64(inlet)
+	if err != nil {
+		L.Push(lua.LNil)
+	} else {
+		L.Push(lua.LString(outlet))
+	}
+	return 1
+}
+
+func luaEncodeSecret(L *lua.LState) int {
+	secret := L.CheckString(1)
+	salt := os.Getenv("SALT")
+	if salt == "" {
+		salt = DEFAULT_SALT
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"secret": secret,
+	})
+	tokenString, err := token.SignedString([]byte(salt))
+	if err != nil {
+		fmt.Printf("failed to encode: %#v\n", err)
+		L.Push(lua.LNil)
+	} else {
+		L.Push(lua.LString(tokenString))
+	}
+	return 1
+}
+
+func luaDecodeSecret(L *lua.LState) int {
+	secret := L.CheckString(1)
+	salt := os.Getenv("SALT")
+	if salt == "" {
+		salt = DEFAULT_SALT
+	}
+	token, err := jwt.Parse(secret, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("Wrong signing methodc")
+		}
+		return []byte(salt), nil
+	})
+	if err != nil {
+		fmt.Printf("--- # parse error\n")
+		fmt.Printf("%#v\n", err)
+		L.Push(lua.LNil)
+		return 1
+	}
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		fmt.Printf("--- # claims error\n")
+		L.Push(lua.LString(claims["secret"].(string)))
+	} else {
+		fmt.Printf("%#v\n", err)
+		L.Push(lua.LNil)
+	}
+
+	return 1
+}
 
 // Generic function to upload a file to an app's database
 func uploadFile(appId int, ownerId int, filename string, filepath string, rawContents string, connection *database.Conn) error {
@@ -271,8 +342,6 @@ func generateDownloadAppFileFunction(appId int, connection *database.Conn) lua.L
 		return 1
 	}
 }
-
-
 
 // Generic function to check if a file exists in the database
 func checkFile(appId int, userId int, filename string, connection *database.Conn) (bool, error) {
@@ -516,6 +585,10 @@ func RunLuaAction(appId int, userId int, actionScript string, inputData string, 
 	}
 	L.SetGlobal("now", L.NewFunction(nowFunction))
 	L.SetGlobal("compare_timestamps", L.NewFunction(compareTimestampsFunction))
+	L.SetGlobal("encode_base64", L.NewFunction(luaEncodeBase64))
+	L.SetGlobal("decode_base64", L.NewFunction(luaDecodeBase64))
+	L.SetGlobal("encode_secret", L.NewFunction(luaEncodeSecret))
+	L.SetGlobal("decode_secret", L.NewFunction(luaDecodeSecret))
 
 	// include database operations
 	if connection != nil {

@@ -243,3 +243,22 @@ func TestTimestampSupport(t *testing.T) {
 	}
 }
 
+func TestDecodeAndDecodeSecret(t *testing.T) {
+	toHide := "name=snufkin&job=traveller"
+	script := "main = encode_secret"
+	result, err := RunLuaAction(0, 0, script, toHide, nil)
+	if err != nil {
+		t.Fatalf("Failed to run encode secret lua action")
+	}
+
+	hidden := result
+	script = "main = decode_secret"
+	result, err = RunLuaAction(0, 0, script, hidden, nil)
+	if err != nil {
+		t.Fatalf("Failed to run decode secret lua action")
+	}
+	if result != toHide {
+		t.Errorf("Decoding process is wrong; actual result: '%s'", result)
+	}
+}
+
