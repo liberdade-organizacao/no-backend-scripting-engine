@@ -431,8 +431,21 @@ func TestScriptsCanConvertBetweenUserEmailsAndIds(t *testing.T) {
 }
 
 const USER_ID_SCRIPT = `
-function main(param)
+function main(unused_param)
  return ""  .. get_user_id()
+end
+`
+
+const DOWNLOAD_WITH_USER_ID_SCRIPT = `
+function main(unused_param)
+ local filename = "random_file.txt"
+ upload_user_file(filename, "some contents here")
+ local result = download_file(get_user_id(), filename)
+ if result == nil then
+  return ""
+ else
+  return result
+ end
 end
 `
 
@@ -452,6 +465,22 @@ func TestScriptsCanGetUserId(t *testing.T) {
 	}
 	if result != expectedResult {
 		t.Fatalf("Failed to get user id: '%s'", result)
+	}
+
+	actionId := ids["action_id"]
+	cmd := fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DOWNLOAD_WITH_USER_ID_SCRIPT, actionId)
+	_, err = controller.Connection.Query(cmd) 
+	if err != nil {
+		t.Fatalf("Failed to update download with user id script: %s", err)
+	}
+
+	expectedResult = "some contents here"
+	result, err = controller.RunAction(appId, userId, actionName, actionParam)
+	if err != nil {
+		t.Fatalf("Failed to run 'download with user ID script' action: %s", err)
+	}
+	if result != expectedResult {
+		t.Fatalf("Failed to download with user ID: '%s'", result)
 	}
 }
 
