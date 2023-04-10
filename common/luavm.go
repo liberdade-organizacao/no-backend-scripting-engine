@@ -530,6 +530,14 @@ func generateUserIdToEmailFunction(appId int, connection *database.Conn) lua.LGF
 	}
 }
 
+func generateGetUserIdFunction(userId int) lua.LGFunction {
+	return func(L *lua.LState) int {
+		L.Push(lua.LNumber(userId))
+		return 1
+	}
+}
+
+
 const TIMESTAMP_FORMAT = "2006-01-02T15:04:05"
 
 func nowFunction(L *lua.LState) int {
@@ -605,6 +613,7 @@ func RunLuaAction(appId int, userId int, actionScript string, inputData string, 
 		deleteAppFileFunction := generateDeleteAppFileFunction(appId, connection)
 		userEmailToIdFunction := generateUserEmailToIdFunction(appId, connection)
 		userIdToEmailFunction := generateUserIdToEmailFunction(appId, connection)
+		getUserIdFunction := generateGetUserIdFunction(userId)
 
 		L.SetGlobal("upload_user_file", L.NewFunction(uploadUserFileFunction))
 		L.SetGlobal("upload_file", L.NewFunction(uploadFileFunction))
@@ -619,6 +628,7 @@ func RunLuaAction(appId int, userId int, actionScript string, inputData string, 
 		L.SetGlobal("delete_app_file", L.NewFunction(deleteAppFileFunction))
 		L.SetGlobal("user_email_to_id", L.NewFunction(userEmailToIdFunction))
 		L.SetGlobal("user_id_to_email", L.NewFunction(userIdToEmailFunction))
+		L.SetGlobal("get_user_id", L.NewFunction(getUserIdFunction))
 	}
 
 	// parsing and running main function

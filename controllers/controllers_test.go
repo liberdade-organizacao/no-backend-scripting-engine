@@ -430,3 +430,28 @@ func TestScriptsCanConvertBetweenUserEmailsAndIds(t *testing.T) {
 	}
 }
 
+const USER_ID_SCRIPT = `
+function main(param)
+ return ""  .. get_user_id()
+end
+`
+
+func TestScriptsCanGetUserId(t *testing.T) {
+	controller, ids, actionName, err := setupBasicTest(USER_ID_SCRIPT)
+	if err != nil {
+		t.Fatalf("Failed to prepare database: %s", err)
+	}
+
+	appId := ids["app_id"]
+	userId := ids["user_id"]
+	expectedResult := fmt.Sprintf("%d", userId)
+	actionParam := "nope"
+	result, err := controller.RunAction(appId, userId, actionName, actionParam)
+	if err != nil {
+		t.Fatalf("Failed to run 'get user id' action: %s", err)
+	}
+	if result != expectedResult {
+		t.Fatalf("Failed to get user id: '%s'", result)
+	}
+}
+
