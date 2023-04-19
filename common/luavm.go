@@ -148,7 +148,6 @@ func luaEncodeSecret(L *lua.LState) int {
 	})
 	tokenString, err := token.SignedString([]byte(salt))
 	if err != nil {
-		fmt.Printf("failed to encode: %#v\n", err)
 		L.Push(lua.LNil)
 	} else {
 		L.Push(lua.LString(tokenString))
@@ -169,17 +168,13 @@ func luaDecodeSecret(L *lua.LState) int {
 		return []byte(salt), nil
 	})
 	if err != nil {
-		fmt.Printf("--- # parse error\n")
-		fmt.Printf("%#v\n", err)
 		L.Push(lua.LNil)
 		return 1
 	}
 
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		fmt.Printf("--- # claims error\n")
 		L.Push(lua.LString(claims["secret"].(string)))
 	} else {
-		fmt.Printf("%#v\n", err)
 		L.Push(lua.LNil)
 	}
 
@@ -511,7 +506,6 @@ func generateUserIdToEmailFunction(appId int, connection *database.Conn) lua.LGF
 		userId := L.CheckNumber(1)
 		rawQuery := `SELECT email FROM users WHERE id=%d AND app_id=%d;`
 		query := fmt.Sprintf(rawQuery, userId, appId)
-		fmt.Printf("%s\n", query)
 		rows, err := connection.Query(query)
 		if err != nil {
 			L.Push(lua.LNil)
