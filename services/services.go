@@ -14,7 +14,7 @@ func StartServer() {
 	if port == "" {
 		port = DEFAULT_PORT
 	}
-	fmt.Printf("Starting server at %s", port)
+	fmt.Printf("Starting server at %s\n", port)
 
 	controller := controllers.NewController()
 	defer controller.Close()
