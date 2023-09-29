@@ -1,7 +1,7 @@
 #################
 # PROJECT STUFF #
 #################
-resources/.env
+.env
 
 ##########
 # GOLANG #
