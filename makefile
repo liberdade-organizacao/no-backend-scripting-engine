@@ -13,7 +13,7 @@ test:
 
 .PHONY: build
 build: test
-	go build -o main.exe main/main.go
+	go build -ldflags "-w" -o main.exe main/main.go
 
 .PHONY: run
 run: build
