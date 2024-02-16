@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/essentialkaos/branca/v2"
 	"github.com/yuin/gopher-lua"
 	"liberdade.bsb.br/baas/scripting/database"
 )
@@ -15,7 +16,7 @@ import (
  * UTILITY FUNCTIONS *
  *********************/
 
-const DEFAULT_SALT = "SALT"
+const DEFAULT_SALT = "supersecretkeyyoushouldnotcommit"
 
 // Encodes to base64
 func encodeBase64(s string) string {
@@ -137,7 +138,7 @@ func luaDecodeBase64(L *lua.LState) int {
 	return 1
 }
 
-func luaEncodeSecret(L *lua.LState) int {
+func luaEncodeJwtSecret(L *lua.LState) int {
 	secret := L.CheckString(1)
 	salt := os.Getenv("SALT")
 	if salt == "" {
@@ -155,7 +156,7 @@ func luaEncodeSecret(L *lua.LState) int {
 	return 1
 }
 
-func luaDecodeSecret(L *lua.LState) int {
+func luaDecodeJwtSecret(L *lua.LState) int {
 	secret := L.CheckString(1)
 	salt := os.Getenv("SALT")
 	if salt == "" {
@@ -178,6 +179,51 @@ func luaDecodeSecret(L *lua.LState) int {
 		L.Push(lua.LNil)
 	}
 
+	return 1
+}
+
+func luaEncodeBrancaSecret(L *lua.LState) int {
+        secret := L.CheckString(1)
+	salt := os.Getenv("SALT")
+	if salt == "" {
+		salt = DEFAULT_SALT
+	}
+	brc, err := branca.NewBranca([]byte(salt))
+	if err != nil {
+		L.Push(lua.LNil)
+		return 1
+	}
+
+	token, err := brc.EncodeToString([]byte(secret))
+	if err != nil {
+		L.Push(lua.LNil)
+		return 1
+	}
+
+	L.Push(lua.LString(token))
+	return 1
+}
+
+func luaDecodeBrancaSecret(L *lua.LState) int {
+        secret := L.CheckString(1)
+	salt := os.Getenv("SALT")
+	if salt == "" {
+		salt = DEFAULT_SALT
+	}
+	brc, err := branca.NewBranca([]byte(salt))
+	if err != nil {
+		L.Push(lua.LNil)
+		return 1
+	}
+
+	token, err := brc.DecodeString(secret)
+	if err != nil {
+		L.Push(lua.LNil)
+		return 1
+	}
+
+	payload := string(token.Payload())
+	L.Push(lua.LString(payload))
 	return 1
 }
 
@@ -589,8 +635,10 @@ func RunLuaAction(appId int, userId int, actionScript string, inputData string, 
 	L.SetGlobal("compare_timestamps", L.NewFunction(compareTimestampsFunction))
 	L.SetGlobal("encode_base64", L.NewFunction(luaEncodeBase64))
 	L.SetGlobal("decode_base64", L.NewFunction(luaDecodeBase64))
-	L.SetGlobal("encode_secret", L.NewFunction(luaEncodeSecret))
-	L.SetGlobal("decode_secret", L.NewFunction(luaDecodeSecret))
+	L.SetGlobal("encode_jwt_secret", L.NewFunction(luaEncodeJwtSecret))
+	L.SetGlobal("decode_jwt_secret", L.NewFunction(luaDecodeJwtSecret))
+	L.SetGlobal("encode_branca_secret", L.NewFunction(luaEncodeBrancaSecret))
+	L.SetGlobal("decode_branca_secret", L.NewFunction(luaDecodeBrancaSecret))
 
 	// include database operations
 	if connection != nil {
