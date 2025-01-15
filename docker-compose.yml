@@ -1,16 +1,3 @@
-version: "3.3"
-services:
-  db:
-    image: postgres:11.5-alpine
-    volumes:
-      - db-data:/var/lib/postgresql/data
-    ports:
-      - "5434:5432"
-    environment:
-      - POSTGRES_DB=baas
-      - POSTGRES_USER=liberdade
-      - POSTGRES_PASSWORD=password
-
 volumes:
   db-data:
 
