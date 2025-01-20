@@ -103,6 +103,7 @@ func TestMainFlow(t *testing.T) {
 		t.Fatalf("Failed to prepare database: %s", err)
 		return
 	}
+	defer controller.Close()
 
 	appId := ids["app_id"]
 	userId := ids["user_id"]
@@ -161,7 +162,9 @@ func TestScriptsCanUploadAndDownloadFiles(t *testing.T) {
 	controller, ids, scriptName, err := setupBasicTest(UPLOAD_SCRIPT)
 	if err != nil {
 		t.Fatalf("Failed to prepare database: %s", err)
+		return
 	}
+	defer controller.Close()
 
 	appId := ids["app_id"]
 	userId := ids["user_id"]
@@ -216,7 +219,9 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 	controller, ids, scriptName, err := setupBasicTest(UPLOAD_SCRIPT)
 	if err != nil {
 		t.Fatalf("Failed to prepare database: %s", err)
+		return
 	}
+	defer controller.Close()
 
 	filename := "delete_me.txt"
 	appId := ids["app_id"]
@@ -324,7 +329,9 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 	controller, ids, scriptName, err := setupBasicTest(UPLOAD_APP_FILE_SCRIPT)
 	if err != nil {
 		t.Fatalf("Failed to prepare database: %s", err)
+		return
 	}
+	defer controller.Close()
 
 	filename := "global_app_file.txt"
 	appId := ids["app_id"]
@@ -401,7 +408,9 @@ func TestScriptsCanConvertBetweenUserEmailsAndIds(t *testing.T) {
 	controller, ids, actionName, err := setupBasicTest(ID_TO_EMAIL_SCRIPT)
 	if err != nil {
 		t.Fatalf("Failed to prepare database: %s", err)
+		return
 	}
+	defer controller.Close()
 
 	appId := ids["app_id"]
 	userId := ids["user_id"]
@@ -453,7 +462,9 @@ func TestScriptsCanGetUserId(t *testing.T) {
 	controller, ids, actionName, err := setupBasicTest(USER_ID_SCRIPT)
 	if err != nil {
 		t.Fatalf("Failed to prepare database: %s", err)
+		return
 	}
+	defer controller.Close()
 
 	appId := ids["app_id"]
 	userId := ids["user_id"]
