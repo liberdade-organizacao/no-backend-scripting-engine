@@ -28,6 +28,10 @@ end
 func prepareDatabase(connection *database.Conn, clientEmail string, scriptName string, script string) (map[string]int, error) {
 	state := make(map[string]int)
 
+	if err := connection.CheckDatabase(); err != nil {
+		return nil, err
+	}
+
 	cmd := fmt.Sprintf("INSERT INTO clients(email,password,is_admin) VALUES('%s','pwd','off') ON CONFLICT DO NOTHING RETURNING id;", clientEmail)
 	rows, err := connection.Query(cmd)
 	clientId := -1
@@ -38,7 +42,6 @@ func prepareDatabase(connection *database.Conn, clientEmail string, scriptName s
 		rows.Scan(&clientId)
 	}
 	state["client_id"] = clientId
-
 
 	cmd = fmt.Sprintf("INSERT INTO apps(owner_id,name) VALUES(%d,'%s') ON CONFLICT DO NOTHING RETURNING id;", clientId, randString(5))
 	rows, err = connection.Query(cmd)
@@ -116,7 +119,6 @@ func TestMainFlow(t *testing.T) {
 		return
 	}
 
-
 	err = controller.CheckPermission(appId, -1, actionName)
 	if err == nil {
 		t.Errorf("Inexistent user has permissions to run an action")
@@ -180,7 +182,7 @@ func TestScriptsCanUploadAndDownloadFiles(t *testing.T) {
 
 	actionId := ids["action_id"]
 	cmd := fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DOWNLOAD_SCRIPT, actionId)
-	_, err = controller.Connection.Query(cmd) 
+	err = controller.Connection.Exec(cmd)
 	if err != nil {
 		t.Fatalf("Failed to upload script: %s", err)
 	}

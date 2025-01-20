@@ -35,17 +35,44 @@ func NewDatabase() Conn {
 
 // Verifies if the database connection is working properly
 func (connection *Conn) CheckDatabase() error {
-    return connection.Database.Ping()
+	return connection.Database.Ping()
 }
 
-// Execute a SQL query
+// Execute a SQL query and returns the result
 func (connection *Conn) Query(query string) (*sql.Rows, error) {
-    result, err := connection.Database.Query(query)
-    return result, err
+	transaction, err := connection.Database.Begin()
+	if err != nil {
+		return nil, err
+	}
+	result, err := connection.Database.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	if err = transaction.Commit(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// Just executes a SQL query
+func (connection *Conn) Exec(query string) error {
+	transaction, err := connection.Database.Begin()
+	if err != nil {
+
+		return err
+	}
+	_, err = connection.Database.Exec(query)
+	if err != nil {
+		return err
+	}
+	if err = transaction.Commit(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Closes the connection
 func (connection *Conn) Close() {
-    connection.Database.Close()
+	connection.Database.Close()
 }
 
