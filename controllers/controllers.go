@@ -69,6 +69,7 @@ func (controller *Controller) RunAction(appId int, userId int, actionName string
 	for rows.Next() {
 		rows.Scan(&actionScript)
 	}
+	rows.Close()
 
 	return common.RunLuaActionTimeout(appId, userId, actionScript, params, controller.Connection) 
 }

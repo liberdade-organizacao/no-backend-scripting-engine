@@ -301,10 +301,11 @@ RETURNING *;
 		fileSize, 
 		fileSize,
 	)
-	_, err = connection.Query(query)
+	rows, err := connection.Query(query)
 	if err != nil {
 		return err
 	}
+	defer rows.Close()
 
 	return nil
 }
@@ -372,6 +373,7 @@ func downloadFile(filepath string, connection *database.Conn) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer rows.Close()
 
 	rawContents := ""
 	for rows.Next() {
@@ -441,6 +443,7 @@ func checkFile(appId int, userId int, filename string, connection *database.Conn
 	if err != nil {
 		return false, err
 	}
+	defer rows.Close()
 	count := -1
 	for rows.Next() {
 		rows.Scan(&count)
@@ -499,11 +502,13 @@ func deleteFile(filepath string, connection *database.Conn) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	defer rows.Close()
 
 	deletedCount := 0
 	for rows.Next() {
 		deletedCount++
 	}
+	rows.Close()
 
 	result := false
 	if deletedCount > 0 {
@@ -581,6 +586,7 @@ func generateUserEmailToIdFunction(appId int, connection *database.Conn) lua.LGF
 			L.Push(lua.LNil)
 			return 1
 		}
+		defer rows.Close()
 		userId := 0
 		for rows.Next() {
 			rows.Scan(&userId)
@@ -604,6 +610,7 @@ func generateUserIdToEmailFunction(appId int, connection *database.Conn) lua.LGF
 			L.Push(lua.LNil)
 			return 1
 		}
+		defer rows.Close()
 		userEmail := ""
 		for rows.Next() {
 			rows.Scan(&userEmail)
