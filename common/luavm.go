@@ -366,20 +366,13 @@ func generateUploadAppFileFunction(appId int, connection *database.Conn) lua.LGF
 
 // Downloads a file from a user from an app
 func downloadFile(filepath string, connection *database.Conn) (string, error) {
-	const rawQuery = `SELECT contents FROM files WHERE filepath='%s';`
-	query := fmt.Sprintf(rawQuery, filepath)
-
-	rows, err := connection.Query(query)
+	localFilepath := getLocalFilepath(filepath)
+	bytes, err := os.ReadFile(localFilepath)
 	if err != nil {
 		return "", err
 	}
-	defer rows.Close()
 
-	rawContents := ""
-	for rows.Next() {
-		rows.Scan(&rawContents)
-	}
-	contents, err := decodeBase64(rawContents)
+	contents, err := decodeBase64(string(bytes))
 	if err != nil {
 		return "", err
 	}
@@ -495,6 +488,12 @@ func generateCheckUserFileFunction(appId int, userId int, connection *database.C
 
 // Generic function to delete a file
 func deleteFile(filepath string, connection *database.Conn) (bool, error) {
+	localFilepath := getLocalFilepath(filepath)
+	err := os.Remove(localFilepath)
+	if err != nil {
+		return false, err
+	}
+
 	rawQuery := `DELETE FROM files WHERE filepath='%s' RETURNING *;`
 	query := fmt.Sprintf(rawQuery, filepath)
 	rows, err := connection.Query(query)

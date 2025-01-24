@@ -308,6 +308,7 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 	actionParam = fmt.Sprintf("filename=%s", filename)
 	result, _ = controller.RunAction(appId, userId, actionName, actionParam)
 	if result != "" {
+		fmt.Printf("result? %s\n", result)
 		t.Fatal("Downloaded inexistent file")
 	}
 }
