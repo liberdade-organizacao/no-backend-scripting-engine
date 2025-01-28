@@ -337,7 +337,12 @@ end
 
 const DOWNLOAD_APP_FILE_SCRIPT = `
 function main(inlet)
- return download_app_file(inlet)
+ local contents = download_app_file(inlet)
+ if contents == nil then
+  return ""
+ else
+  return contents
+ end
 end
 `
 
@@ -359,6 +364,7 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 	}
 	defer controller.Close()
 
+	// uploading app file
 	filename := "global_app_file.txt"
 	appId := ids["app_id"]
 	userId := ids["user_id"]
@@ -373,6 +379,7 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 		t.Fatalf("Upload app file action was not executed properly: %s", result)
 	}
 
+	// download app file
 	actionId := ids["action_id"]
 	cmd := fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DOWNLOAD_APP_FILE_SCRIPT, actionId)
 	rows, err := controller.Connection.Query(cmd) 
@@ -390,6 +397,7 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 		t.Fatalf("Download app file action was not run properly: %s", result)
 	}
 
+	// deleting app file
 	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DELETE_APP_FILE_SCRIPT, actionId)
 	rows, err = controller.Connection.Query(cmd) 
 	if err != nil {
@@ -405,6 +413,7 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 		t.Fatalf("Delete app file action was not run properly: %s", result)
 	}
 
+	// trying to download a deleted app file
 	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DOWNLOAD_APP_FILE_SCRIPT, actionId)
 	rows, err = controller.Connection.Query(cmd) 
 	if err != nil {
