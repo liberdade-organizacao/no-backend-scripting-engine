@@ -164,7 +164,11 @@ function main(inlet)
  local params = parse_url_params(inlet) 
  local filename = params["filename"]
  local contents = download_user_file(filename)
- return contents
+ if contents == nil then
+  return ""
+ else
+  return contents
+ end
 end
 `
 
@@ -233,6 +237,7 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 	}
 	defer controller.Close()
 
+	// uploading file
 	filename := "delete_me.txt"
 	appId := ids["app_id"]
 	userId := ids["user_id"]
@@ -246,6 +251,7 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 		t.Fatalf("Upload action was not executed properly: %s", result)
 	}
 
+	// checking if file is there
 	actionId := ids["action_id"]
 	cmd := fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", CHECK_SCRIPT, actionId)
 	rows, err := controller.Connection.Query(cmd) 
@@ -264,14 +270,13 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 		t.Fatalf("Check action was not executed properly: %s", result)
 	}
 
-
+	// deleting file
 	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DELETE_SCRIPT, actionId)
 	rows, err = controller.Connection.Query(cmd) 
 	if err != nil {
 		t.Fatalf("Failed to upload script: %s", err)
-	} else {
-		rows.Close()
 	}
+	rows.Close()
 
 	actionParam = filename
 	result, err = controller.RunAction(appId, userId, actionName, actionParam)
@@ -282,6 +287,7 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 		t.Fatalf("Delete action was not executed properly: %s", result)
 	}
 	
+	// checking if file is there after deletion
 	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", CHECK_SCRIPT, actionId)
 	rows, err = controller.Connection.Query(cmd) 
 	if err != nil {
@@ -298,6 +304,7 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 		t.Fatal("Check action was executed properly when it shouldn't")
 	}
 
+	// trying to download deleted file
 	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DOWNLOAD_SCRIPT, actionId)
 	rows, err = controller.Connection.Query(cmd) 
 	if err != nil {
@@ -306,10 +313,12 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 	rows.Close()
 
 	actionParam = fmt.Sprintf("filename=%s", filename)
-	result, _ = controller.RunAction(appId, userId, actionName, actionParam)
+	result, err = controller.RunAction(appId, userId, actionName, actionParam)
+	if err != nil {
+		t.Fatalf("Failed to fail a file download: %#v", err)
+	}
 	if result != "" {
-		fmt.Printf("result? %s\n", result)
-		t.Fatal("Downloaded inexistent file")
+		t.Fatalf("Downloaded inexistent file. Contents: '%s'", result)
 	}
 }
 

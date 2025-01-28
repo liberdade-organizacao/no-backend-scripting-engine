@@ -372,7 +372,12 @@ func downloadFile(filepath string, connection *database.Conn) (string, error) {
 		return "", err
 	}
 
-	contents, err := decodeBase64(string(bytes))
+	rawContents := string(bytes)
+	if rawContents == "" {
+		return rawContents, nil
+	}
+
+	contents, err := decodeBase64(rawContents)
 	if err != nil {
 		return "", err
 	}
@@ -507,12 +512,7 @@ func deleteFile(filepath string, connection *database.Conn) (bool, error) {
 	for rows.Next() {
 		deletedCount++
 	}
-	rows.Close()
-
-	result := false
-	if deletedCount > 0 {
-		result = true
-	}
+	result := deletedCount > 0
 
 	return result, nil
 }
