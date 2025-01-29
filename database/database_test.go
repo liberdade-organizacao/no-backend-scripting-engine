@@ -7,9 +7,10 @@ import (
 func TestDatabasePing(t *testing.T) {
     // using the defaults from docker compose
     connection := NewDatabase()
-    err := connection.CheckDatabase()
-    if err != nil {
+    defer connection.Close()
+    if err := connection.CheckDatabase(); err != nil {
         t.Errorf("Database connection is not working: %#v\n", err)
+	return
     }
 }
 

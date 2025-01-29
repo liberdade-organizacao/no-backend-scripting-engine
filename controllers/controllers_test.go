@@ -28,6 +28,10 @@ end
 func prepareDatabase(connection *database.Conn, clientEmail string, scriptName string, script string) (map[string]int, error) {
 	state := make(map[string]int)
 
+	if err := connection.CheckDatabase(); err != nil {
+		return nil, err
+	}
+
 	cmd := fmt.Sprintf("INSERT INTO clients(email,password,is_admin) VALUES('%s','pwd','off') ON CONFLICT DO NOTHING RETURNING id;", clientEmail)
 	rows, err := connection.Query(cmd)
 	clientId := -1
@@ -37,8 +41,8 @@ func prepareDatabase(connection *database.Conn, clientEmail string, scriptName s
 	for rows.Next() {
 		rows.Scan(&clientId)
 	}
+	rows.Close()
 	state["client_id"] = clientId
-
 
 	cmd = fmt.Sprintf("INSERT INTO apps(owner_id,name) VALUES(%d,'%s') ON CONFLICT DO NOTHING RETURNING id;", clientId, randString(5))
 	rows, err = connection.Query(cmd)
@@ -49,12 +53,15 @@ func prepareDatabase(connection *database.Conn, clientEmail string, scriptName s
 	for rows.Next() {
 		rows.Scan(&appId)
 	}
+	rows.Close()
 	state["app_id"] = appId
 
 	cmd = fmt.Sprintf("INSERT INTO app_memberships(app_id,client_id,role) VALUES(%d,%d,'admin') ON CONFLICT DO NOTHING;", appId, clientId)
-	_, err = connection.Query(cmd)
+	rows, err = connection.Query(cmd)
 	if err != nil {
 		return state, err
+	} else {
+		rows.Close()
 	}
 
 	cmd = fmt.Sprintf("INSERT INTO users(app_id,email,password) VALUES(%d,'%s','pwd') ON CONFLICT DO NOTHING RETURNING id;", appId, clientEmail)
@@ -66,6 +73,7 @@ func prepareDatabase(connection *database.Conn, clientEmail string, scriptName s
 	for rows.Next() {
 		rows.Scan(&userId)
 	}
+	rows.Close()
 	state["user_id"] = userId
 
 	cmd = fmt.Sprintf("INSERT INTO actions(app_id,name,script) VALUES(%d,'%s','') ON CONFLICT DO NOTHING RETURNING id;", appId, scriptName)
@@ -77,12 +85,15 @@ func prepareDatabase(connection *database.Conn, clientEmail string, scriptName s
 	for rows.Next() {
 		rows.Scan(&actionId)
 	}
+	rows.Close()
 	state["action_id"] = actionId
 
 	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", script, actionId)
-	_, err = connection.Query(cmd) 
+	rows, err = connection.Query(cmd) 
 	if err != nil {
 		return state, err
+	} else {
+		rows.Close()
 	}
 
 	return state, nil
@@ -103,6 +114,7 @@ func TestMainFlow(t *testing.T) {
 		t.Fatalf("Failed to prepare database: %s", err)
 		return
 	}
+	defer controller.Close()
 
 	appId := ids["app_id"]
 	userId := ids["user_id"]
@@ -114,7 +126,6 @@ func TestMainFlow(t *testing.T) {
 		t.Fatalf("User does not have enough permissions to run this action")
 		return
 	}
-
 
 	err = controller.CheckPermission(appId, -1, actionName)
 	if err == nil {
@@ -153,7 +164,11 @@ function main(inlet)
  local params = parse_url_params(inlet) 
  local filename = params["filename"]
  local contents = download_user_file(filename)
- return contents
+ if contents == nil then
+  return ""
+ else
+  return contents
+ end
 end
 `
 
@@ -161,7 +176,9 @@ func TestScriptsCanUploadAndDownloadFiles(t *testing.T) {
 	controller, ids, scriptName, err := setupBasicTest(UPLOAD_SCRIPT)
 	if err != nil {
 		t.Fatalf("Failed to prepare database: %s", err)
+		return
 	}
+	defer controller.Close()
 
 	appId := ids["app_id"]
 	userId := ids["user_id"]
@@ -177,7 +194,7 @@ func TestScriptsCanUploadAndDownloadFiles(t *testing.T) {
 
 	actionId := ids["action_id"]
 	cmd := fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DOWNLOAD_SCRIPT, actionId)
-	_, err = controller.Connection.Query(cmd) 
+	err = controller.Connection.Exec(cmd)
 	if err != nil {
 		t.Fatalf("Failed to upload script: %s", err)
 	}
@@ -216,8 +233,11 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 	controller, ids, scriptName, err := setupBasicTest(UPLOAD_SCRIPT)
 	if err != nil {
 		t.Fatalf("Failed to prepare database: %s", err)
+		return
 	}
+	defer controller.Close()
 
+	// uploading file
 	filename := "delete_me.txt"
 	appId := ids["app_id"]
 	userId := ids["user_id"]
@@ -231,11 +251,14 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 		t.Fatalf("Upload action was not executed properly: %s", result)
 	}
 
+	// checking if file is there
 	actionId := ids["action_id"]
 	cmd := fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", CHECK_SCRIPT, actionId)
-	_, err = controller.Connection.Query(cmd) 
+	rows, err := controller.Connection.Query(cmd) 
 	if err != nil {
 		t.Fatalf("Failed to upload script: %s", err)
+	} else {
+		rows.Close()
 	}
 
 	actionParam = filename
@@ -247,12 +270,13 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 		t.Fatalf("Check action was not executed properly: %s", result)
 	}
 
-
+	// deleting file
 	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DELETE_SCRIPT, actionId)
-	_, err = controller.Connection.Query(cmd) 
+	rows, err = controller.Connection.Query(cmd) 
 	if err != nil {
 		t.Fatalf("Failed to upload script: %s", err)
 	}
+	rows.Close()
 
 	actionParam = filename
 	result, err = controller.RunAction(appId, userId, actionName, actionParam)
@@ -263,11 +287,13 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 		t.Fatalf("Delete action was not executed properly: %s", result)
 	}
 	
+	// checking if file is there after deletion
 	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", CHECK_SCRIPT, actionId)
-	_, err = controller.Connection.Query(cmd) 
+	rows, err = controller.Connection.Query(cmd) 
 	if err != nil {
 		t.Fatalf("Failed to upload script: %s", err)
 	}
+	rows.Close()
 
 	actionParam = filename
 	result, err = controller.RunAction(appId, userId, actionName, actionParam)
@@ -278,16 +304,21 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 		t.Fatal("Check action was executed properly when it shouldn't")
 	}
 
+	// trying to download deleted file
 	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DOWNLOAD_SCRIPT, actionId)
-	_, err = controller.Connection.Query(cmd) 
+	rows, err = controller.Connection.Query(cmd) 
 	if err != nil {
 		t.Fatalf("Failed to upload script: %s", err)
 	}
+	rows.Close()
 
 	actionParam = fmt.Sprintf("filename=%s", filename)
-	result, _ = controller.RunAction(appId, userId, actionName, actionParam)
+	result, err = controller.RunAction(appId, userId, actionName, actionParam)
+	if err != nil {
+		t.Fatalf("Failed to fail a file download: %#v", err)
+	}
 	if result != "" {
-		t.Fatal("Downloaded inexistent file")
+		t.Fatalf("Downloaded inexistent file. Contents: '%s'", result)
 	}
 }
 
@@ -306,7 +337,12 @@ end
 
 const DOWNLOAD_APP_FILE_SCRIPT = `
 function main(inlet)
- return download_app_file(inlet)
+ local contents = download_app_file(inlet)
+ if contents == nil then
+  return ""
+ else
+  return contents
+ end
 end
 `
 
@@ -324,8 +360,11 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 	controller, ids, scriptName, err := setupBasicTest(UPLOAD_APP_FILE_SCRIPT)
 	if err != nil {
 		t.Fatalf("Failed to prepare database: %s", err)
+		return
 	}
+	defer controller.Close()
 
+	// uploading app file
 	filename := "global_app_file.txt"
 	appId := ids["app_id"]
 	userId := ids["user_id"]
@@ -340,12 +379,14 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 		t.Fatalf("Upload app file action was not executed properly: %s", result)
 	}
 
+	// download app file
 	actionId := ids["action_id"]
 	cmd := fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DOWNLOAD_APP_FILE_SCRIPT, actionId)
-	_, err = controller.Connection.Query(cmd) 
+	rows, err := controller.Connection.Query(cmd) 
 	if err != nil {
 		t.Fatalf("Failed to update app file script: %s", err)
 	}
+	rows.Close()
 
 	actionParam = filename
 	result, err = controller.RunAction(appId, userId, actionName, actionParam)
@@ -356,11 +397,13 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 		t.Fatalf("Download app file action was not run properly: %s", result)
 	}
 
+	// deleting app file
 	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DELETE_APP_FILE_SCRIPT, actionId)
-	_, err = controller.Connection.Query(cmd) 
+	rows, err = controller.Connection.Query(cmd) 
 	if err != nil {
 		t.Fatalf("Failed to update app file script again: %s", err)
 	}
+	rows.Close()
 
 	result, err = controller.RunAction(appId, userId, actionName, actionParam)
 	if err != nil {
@@ -370,10 +413,13 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 		t.Fatalf("Delete app file action was not run properly: %s", result)
 	}
 
+	// trying to download a deleted app file
 	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DOWNLOAD_APP_FILE_SCRIPT, actionId)
-	_, err = controller.Connection.Query(cmd) 
+	rows, err = controller.Connection.Query(cmd) 
 	if err != nil {
 		t.Fatalf("Failed to update app file script one more time: %s", err)
+	} else {
+		rows.Close()
 	}
 
 	result, err = controller.RunAction(appId, userId, actionName, actionParam)
@@ -401,7 +447,9 @@ func TestScriptsCanConvertBetweenUserEmailsAndIds(t *testing.T) {
 	controller, ids, actionName, err := setupBasicTest(ID_TO_EMAIL_SCRIPT)
 	if err != nil {
 		t.Fatalf("Failed to prepare database: %s", err)
+		return
 	}
+	defer controller.Close()
 
 	appId := ids["app_id"]
 	userId := ids["user_id"]
@@ -415,9 +463,11 @@ func TestScriptsCanConvertBetweenUserEmailsAndIds(t *testing.T) {
 
 	actionId := ids["action_id"]
 	cmd := fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", EMAIL_TO_ID_SCRIPT, actionId)
-	_, err = controller.Connection.Query(cmd) 
+	rows, err := controller.Connection.Query(cmd) 
 	if err != nil {
 		t.Fatalf("Failed to update app file script: %s", err)
+	} else {
+		rows.Close()
 	}
 
 	actionParam = userEmail
@@ -453,7 +503,9 @@ func TestScriptsCanGetUserId(t *testing.T) {
 	controller, ids, actionName, err := setupBasicTest(USER_ID_SCRIPT)
 	if err != nil {
 		t.Fatalf("Failed to prepare database: %s", err)
+		return
 	}
+	defer controller.Close()
 
 	appId := ids["app_id"]
 	userId := ids["user_id"]
@@ -469,9 +521,11 @@ func TestScriptsCanGetUserId(t *testing.T) {
 
 	actionId := ids["action_id"]
 	cmd := fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DOWNLOAD_WITH_USER_ID_SCRIPT, actionId)
-	_, err = controller.Connection.Query(cmd) 
+	rows, err := controller.Connection.Query(cmd) 
 	if err != nil {
 		t.Fatalf("Failed to update download with user id script: %s", err)
+	} else {
+		rows.Close()
 	}
 
 	expectedResult = "some contents here"

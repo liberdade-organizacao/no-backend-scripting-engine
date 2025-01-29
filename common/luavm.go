@@ -1,13 +1,15 @@
 package common
 
 import (
+	"bufio"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/essentialkaos/branca/v2"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/yuin/gopher-lua"
 	"liberdade.bsb.br/baas/scripting/database"
 )
@@ -17,6 +19,7 @@ import (
  *********************/
 
 const DEFAULT_SALT = "supersecretkeyyoushouldnotcommit"
+const DEFAULT_DATABASE_FOLDER = "./db/fs"
 
 // Encodes to base64
 func encodeBase64(s string) string {
@@ -38,6 +41,26 @@ func newFilepath(appId int, userId int, filename string) string {
 
 func newGlobalFilepath(appId int, filename string) string {
 	return fmt.Sprintf("a%d/%s", appId, filename)
+}
+
+func getLocalFilepath(filepath string) string {
+	databaseFolder := os.Getenv("DATABASE_FOLDER")
+	if databaseFolder == "" {
+		databaseFolder = DEFAULT_DATABASE_FOLDER
+	}
+	return fmt.Sprintf("%s/%s", databaseFolder, filepath)
+}
+
+func createFoldersForFile(filepath string) error {
+	parts := strings.Split(filepath, "/")
+	dirName := strings.Join(parts[0:(len(parts)-1)], "/")
+	err := os.MkdirAll(dirName, os.ModePerm)
+
+	if err == nil || os.IsExist(err) {
+		return nil
+	} else {
+		return err
+	}
 }
 
 /*****************
@@ -229,20 +252,42 @@ func luaDecodeBrancaSecret(L *lua.LState) int {
 
 // Generic function to upload a file to an app's database
 func uploadFile(appId int, ownerId int, filename string, filepath string, rawContents string, connection *database.Conn) error {
+	// storing file contents on disk
+	localFilepath := getLocalFilepath(filepath)
+	err := createFoldersForFile(localFilepath)
+	if err != nil {
+		return err
+	}
+
+	fp, err := os.Create(localFilepath)
+	if err != nil {
+		return err
+	}
+	defer fp.Close()
+
+	contents := encodeBase64(rawContents)
+	writer := bufio.NewWriter(fp)
+	_, err = writer.WriteString(contents)
+	if err != nil {
+		return err
+	}
+	writer.Flush()
+
+	// saving file registry on database
 	const rawQuery = `
-INSERT INTO files (filename, filepath, app_id, owner_id, contents)
+INSERT INTO files (filename, filepath, app_id, owner_id, file_size)
 VALUES (
 	'%s',
 	'%s',
 	%d,
 	%s,
-	E'%s'
+	%d
 )
 ON CONFLICT (filepath) DO
-UPDATE SET contents=E'%s'
+UPDATE SET file_size=%d
 RETURNING *;
 `
-	contents := encodeBase64(rawContents)
+	fileSize := len(contents)
 	ownerIdValue := "NULL"
 	if ownerId > 0 {
 		ownerIdValue = fmt.Sprintf("%d", ownerId)
@@ -253,13 +298,14 @@ RETURNING *;
 		filepath, 
 		appId, 
 		ownerIdValue, 
-		contents, 
-		contents,
+		fileSize, 
+		fileSize,
 	)
-	_, err := connection.Query(query)
+	rows, err := connection.Query(query)
 	if err != nil {
 		return err
 	}
+	defer rows.Close()
 
 	return nil
 }
@@ -274,6 +320,7 @@ func generateUploadFileFunction(appId int, connection *database.Conn) lua.LGFunc
 		err := uploadFile(appId, userId, filename, filepath, contents, connection)
 
 		if err != nil {
+			fmt.Printf("file upload error: %#v\n", err)
 			L.Push(lua.LString("Failed to upload file!"))
 			return 1
 		}
@@ -291,6 +338,7 @@ func generateUploadUserFileFunction(appId int, userId int, connection *database.
 		filepath := newFilepath(appId, userId, filename)
 		err := uploadFile(appId, userId, filename, filepath, contents, connection)
 		if err != nil {
+			fmt.Printf("user file upload error: %#v\n", err)
 			L.Push(lua.LString("Failed to upload file!"))
 			return 1
 		}
@@ -318,18 +366,17 @@ func generateUploadAppFileFunction(appId int, connection *database.Conn) lua.LGF
 
 // Downloads a file from a user from an app
 func downloadFile(filepath string, connection *database.Conn) (string, error) {
-	const rawQuery = `SELECT contents FROM files WHERE filepath='%s';`
-	query := fmt.Sprintf(rawQuery, filepath)
-
-	rows, err := connection.Query(query)
+	localFilepath := getLocalFilepath(filepath)
+	bytes, err := os.ReadFile(localFilepath)
 	if err != nil {
 		return "", err
 	}
 
-	rawContents := ""
-	for rows.Next() {
-		rows.Scan(&rawContents)
+	rawContents := string(bytes)
+	if rawContents == "" {
+		return rawContents, nil
 	}
+
 	contents, err := decodeBase64(rawContents)
 	if err != nil {
 		return "", err
@@ -394,6 +441,7 @@ func checkFile(appId int, userId int, filename string, connection *database.Conn
 	if err != nil {
 		return false, err
 	}
+	defer rows.Close()
 	count := -1
 	for rows.Next() {
 		rows.Scan(&count)
@@ -445,6 +493,12 @@ func generateCheckUserFileFunction(appId int, userId int, connection *database.C
 
 // Generic function to delete a file
 func deleteFile(filepath string, connection *database.Conn) (bool, error) {
+	localFilepath := getLocalFilepath(filepath)
+	err := os.Remove(localFilepath)
+	if err != nil {
+		return false, err
+	}
+
 	rawQuery := `DELETE FROM files WHERE filepath='%s' RETURNING *;`
 	query := fmt.Sprintf(rawQuery, filepath)
 	rows, err := connection.Query(query)
@@ -452,16 +506,13 @@ func deleteFile(filepath string, connection *database.Conn) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	defer rows.Close()
 
 	deletedCount := 0
 	for rows.Next() {
 		deletedCount++
 	}
-
-	result := false
-	if deletedCount > 0 {
-		result = true
-	}
+	result := deletedCount > 0
 
 	return result, nil
 }
@@ -534,6 +585,7 @@ func generateUserEmailToIdFunction(appId int, connection *database.Conn) lua.LGF
 			L.Push(lua.LNil)
 			return 1
 		}
+		defer rows.Close()
 		userId := 0
 		for rows.Next() {
 			rows.Scan(&userId)
@@ -557,6 +609,7 @@ func generateUserIdToEmailFunction(appId int, connection *database.Conn) lua.LGF
 			L.Push(lua.LNil)
 			return 1
 		}
+		defer rows.Close()
 		userEmail := ""
 		for rows.Next() {
 			rows.Scan(&userEmail)

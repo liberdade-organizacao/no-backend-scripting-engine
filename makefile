@@ -1,10 +1,6 @@
 .PHONY: default
 default: run
 
-.PHONY: psql
-psql:
-	psql -h localhost -p 5434 -d baas -U liberdade -W
-
 .PHONY: test
 test:
 	go test ./common/*.go
