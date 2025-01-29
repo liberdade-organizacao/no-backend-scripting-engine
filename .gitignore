@@ -2,6 +2,7 @@
 # PROJECT STUFF #
 #################
 .env
+db/
 
 ##########
 # GOLANG #
