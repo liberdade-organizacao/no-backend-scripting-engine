@@ -6,7 +6,6 @@ Add-on for [Liberdade's BaaS](https://github.com/liberdade-organizacao/no-backen
 
 Requirements:
 - Go
-- PostgreSQL
 - Docker (for development)
 - BaaS API
 
@@ -21,11 +20,12 @@ go build -o main.exe main/main.go
 
 The main execution can configured using the following environment variables:
 
-| Variable name           | Default value |
-|-------------------------|---------------|
-| `SCRIPTING_ENGINE_PORT` | ":7781"       |
-| `JDBC_DATABASE_URL`     | connects to the Docker PostgreSQL database |
-| `SALT`                  | value used to hide secrets |
+| Variable name           | Default value                      |
+|-------------------------|------------------------------------|
+| `SCRIPTING_ENGINE_PORT` | ":7781"                            |
+| `DATABASE_FILE`         | "./db/database.sqlite"             |
+| `DATABASE_FOLDER`       | "./db/fs"                          |
+| `SALT`                  | "supersecretkeyyoushouldnotcommit" |
 
 ### Compilation Notes
 
