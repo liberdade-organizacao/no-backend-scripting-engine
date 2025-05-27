@@ -1,10 +1,10 @@
 package services
 
 import (
-	"os"
 	"fmt"
-	"net/http"
 	"liberdade.bsb.br/baas/scripting/controllers"
+	"net/http"
+	"os"
 )
 
 const DEFAULT_PORT = ":7781"
@@ -24,4 +24,3 @@ func StartServer() {
 
 	http.ListenAndServe(port, nil)
 }
-

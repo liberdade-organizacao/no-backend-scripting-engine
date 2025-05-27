@@ -1,15 +1,15 @@
 package database
 
 import (
-	"os"
 	"database/sql"
 	_ "modernc.org/sqlite"
+	"os"
 )
 
 // Basic database connection
 type Conn struct {
-    Connection string
-    Database *sql.DB
+	Connection string
+	Database   *sql.DB
 }
 
 const DEFAULT_DATABASE_FILE = "/tmp/db/database.sqlite"
@@ -26,7 +26,7 @@ func NewDatabase() Conn {
 		panic(err)
 	}
 
-	connection := Conn {
+	connection := Conn{
 		Database: db,
 	}
 
@@ -75,4 +75,3 @@ func (connection *Conn) Exec(query string) error {
 func (connection *Conn) Close() {
 	connection.Database.Close()
 }
-

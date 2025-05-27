@@ -1,11 +1,11 @@
 package controllers
 
 import (
-	"testing"
 	"fmt"
-	"math/rand"
-	"time"
 	"liberdade.bsb.br/baas/scripting/database"
+	"math/rand"
+	"testing"
+	"time"
 )
 
 const LETTER_BYTES = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -89,7 +89,7 @@ func prepareDatabase(connection *database.Conn, clientEmail string, scriptName s
 	state["action_id"] = actionId
 
 	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", script, actionId)
-	rows, err = connection.Query(cmd) 
+	rows, err = connection.Query(cmd)
 	if err != nil {
 		return state, err
 	} else {
@@ -254,7 +254,7 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 	// checking if file is there
 	actionId := ids["action_id"]
 	cmd := fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", CHECK_SCRIPT, actionId)
-	rows, err := controller.Connection.Query(cmd) 
+	rows, err := controller.Connection.Query(cmd)
 	if err != nil {
 		t.Fatalf("Failed to upload script: %s", err)
 	} else {
@@ -272,7 +272,7 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 
 	// deleting file
 	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DELETE_SCRIPT, actionId)
-	rows, err = controller.Connection.Query(cmd) 
+	rows, err = controller.Connection.Query(cmd)
 	if err != nil {
 		t.Fatalf("Failed to upload script: %s", err)
 	}
@@ -286,10 +286,10 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 	if result != "ok" {
 		t.Fatalf("Delete action was not executed properly: %s", result)
 	}
-	
+
 	// checking if file is there after deletion
 	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", CHECK_SCRIPT, actionId)
-	rows, err = controller.Connection.Query(cmd) 
+	rows, err = controller.Connection.Query(cmd)
 	if err != nil {
 		t.Fatalf("Failed to upload script: %s", err)
 	}
@@ -306,7 +306,7 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 
 	// trying to download deleted file
 	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DOWNLOAD_SCRIPT, actionId)
-	rows, err = controller.Connection.Query(cmd) 
+	rows, err = controller.Connection.Query(cmd)
 	if err != nil {
 		t.Fatalf("Failed to upload script: %s", err)
 	}
@@ -382,7 +382,7 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 	// download app file
 	actionId := ids["action_id"]
 	cmd := fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DOWNLOAD_APP_FILE_SCRIPT, actionId)
-	rows, err := controller.Connection.Query(cmd) 
+	rows, err := controller.Connection.Query(cmd)
 	if err != nil {
 		t.Fatalf("Failed to update app file script: %s", err)
 	}
@@ -399,7 +399,7 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 
 	// deleting app file
 	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DELETE_APP_FILE_SCRIPT, actionId)
-	rows, err = controller.Connection.Query(cmd) 
+	rows, err = controller.Connection.Query(cmd)
 	if err != nil {
 		t.Fatalf("Failed to update app file script again: %s", err)
 	}
@@ -415,7 +415,7 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 
 	// trying to download a deleted app file
 	cmd = fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DOWNLOAD_APP_FILE_SCRIPT, actionId)
-	rows, err = controller.Connection.Query(cmd) 
+	rows, err = controller.Connection.Query(cmd)
 	if err != nil {
 		t.Fatalf("Failed to update app file script one more time: %s", err)
 	} else {
@@ -463,7 +463,7 @@ func TestScriptsCanConvertBetweenUserEmailsAndIds(t *testing.T) {
 
 	actionId := ids["action_id"]
 	cmd := fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", EMAIL_TO_ID_SCRIPT, actionId)
-	rows, err := controller.Connection.Query(cmd) 
+	rows, err := controller.Connection.Query(cmd)
 	if err != nil {
 		t.Fatalf("Failed to update app file script: %s", err)
 	} else {
@@ -521,7 +521,7 @@ func TestScriptsCanGetUserId(t *testing.T) {
 
 	actionId := ids["action_id"]
 	cmd := fmt.Sprintf("UPDATE actions SET script='%s' WHERE id=%d;", DOWNLOAD_WITH_USER_ID_SCRIPT, actionId)
-	rows, err := controller.Connection.Query(cmd) 
+	rows, err := controller.Connection.Query(cmd)
 	if err != nil {
 		t.Fatalf("Failed to update download with user id script: %s", err)
 	} else {
@@ -537,4 +537,3 @@ func TestScriptsCanGetUserId(t *testing.T) {
 		t.Fatalf("Failed to download with user ID: '%s'", result)
 	}
 }
-

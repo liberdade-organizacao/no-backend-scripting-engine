@@ -5,13 +5,13 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"os"
-	"strings"
-	"time"
 	"github.com/essentialkaos/branca/v2"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/yuin/gopher-lua"
 	"liberdade.bsb.br/baas/scripting/database"
+	"os"
+	"strings"
+	"time"
 )
 
 /*********************
@@ -206,7 +206,7 @@ func luaDecodeJwtSecret(L *lua.LState) int {
 }
 
 func luaEncodeBrancaSecret(L *lua.LState) int {
-        secret := L.CheckString(1)
+	secret := L.CheckString(1)
 	salt := os.Getenv("SALT")
 	if salt == "" {
 		salt = DEFAULT_SALT
@@ -228,7 +228,7 @@ func luaEncodeBrancaSecret(L *lua.LState) int {
 }
 
 func luaDecodeBrancaSecret(L *lua.LState) int {
-        secret := L.CheckString(1)
+	secret := L.CheckString(1)
 	salt := os.Getenv("SALT")
 	if salt == "" {
 		salt = DEFAULT_SALT
@@ -294,11 +294,11 @@ RETURNING *;
 	}
 	query := fmt.Sprintf(
 		rawQuery,
-		filename, 
-		filepath, 
-		appId, 
-		ownerIdValue, 
-		fileSize, 
+		filename,
+		filepath,
+		appId,
+		ownerIdValue,
+		fileSize,
 		fileSize,
 	)
 	rows, err := connection.Query(query)
@@ -630,7 +630,6 @@ func generateGetUserIdFunction(userId int) lua.LGFunction {
 	}
 }
 
-
 const TIMESTAMP_FORMAT = "2006-01-02T15:04:05"
 
 func nowFunction(L *lua.LState) int {
@@ -733,8 +732,8 @@ func RunLuaAction(appId int, userId int, actionScript string, inputData string, 
 	}
 
 	err = L.CallByParam(lua.P{
-		Fn: L.GetGlobal("main"),
-		NRet: 1,
+		Fn:      L.GetGlobal("main"),
+		NRet:    1,
 		Protect: true,
 	}, lua.LString(inputData))
 	if err != nil {
@@ -749,7 +748,7 @@ func RunLuaAction(appId int, userId int, actionScript string, inputData string, 
 // Struct to hold the result of a call to a Lua script
 type LuaActionResult struct {
 	Result string
-	Error error
+	Error  error
 }
 
 // Just like RunLuaAction but wraps the result in a struct
@@ -757,7 +756,7 @@ func runLuaActionWrapped(appId int, userId int, actionScript string, inputData s
 	result, err := RunLuaAction(appId, userId, actionScript, inputData, connection)
 	return LuaActionResult{
 		Result: result,
-		Error: err,
+		Error:  err,
 	}
 }
 
@@ -769,9 +768,8 @@ func RunLuaActionTimeout(appId int, userId int, actionScript string, inputData s
 	}()
 	select {
 	case <-time.After(5 * time.Second):
-		return  "", errors.New("5 seconds timeout")
+		return "", errors.New("5 seconds timeout")
 	case result := <-result:
 		return result.Result, result.Error
 	}
 }
-

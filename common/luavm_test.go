@@ -1,7 +1,7 @@
 package common
 
 import (
-    "testing"
+	"testing"
 )
 
 func TestLuaVm(t *testing.T) {
@@ -124,7 +124,7 @@ end
 	if result != "ok" {
 		t.Errorf("Failed to convert to recfile from Lua table")
 	}
-	
+
 	// values are correctly extracted
 	script = `
 function main(param)
@@ -216,7 +216,7 @@ func TestTimestampSupport(t *testing.T) {
 	param := `1986-07-14T12:00:00`
 	result, err := RunLuaAction(0, 0, script, param, nil)
 	if err != nil {
-		t.Errorf("Failed timestamp support script: %s", err)	
+		t.Errorf("Failed timestamp support script: %s", err)
 	}
 	if result != "bigger" {
 		t.Errorf("Timestamp comparison is wrong")
@@ -280,4 +280,3 @@ func TestDecodeAndDecodeBrancaSecret(t *testing.T) {
 		t.Errorf("Decoding process is wrong; actual result: '%s'", result)
 	}
 }
-

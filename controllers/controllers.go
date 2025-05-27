@@ -1,13 +1,13 @@
 package controllers
 
 import (
-	"net/http"
-	"io"
-	"fmt"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"liberdade.bsb.br/baas/scripting/common"
 	"liberdade.bsb.br/baas/scripting/database"
+	"net/http"
 )
 
 // Struct to encapsulate required mechanisms to run this service
@@ -16,10 +16,10 @@ type Controller struct {
 }
 
 // Creates a new controller
-func NewController() (*Controller) {
+func NewController() *Controller {
 	connection := database.NewDatabase()
 
-	controller := Controller {
+	controller := Controller{
 		Connection: &connection,
 	}
 
@@ -61,8 +61,8 @@ func (controller *Controller) CheckPermission(appId int, userId int, actionName 
 // The action may accept parameters as input
 func (controller *Controller) RunAction(appId int, userId int, actionName string, params string) (string, error) {
 	query := fmt.Sprintf("SELECT script FROM actions WHERE app_id='%d' AND name='%s';", appId, actionName)
-	actionScript := "" 
-	rows, err := controller.Connection.Query(query) 
+	actionScript := ""
+	rows, err := controller.Connection.Query(query)
 	if err != nil {
 		panic(err)
 	}
@@ -71,7 +71,7 @@ func (controller *Controller) RunAction(appId int, userId int, actionName string
 	}
 	rows.Close()
 
-	return common.RunLuaActionTimeout(appId, userId, actionScript, params, controller.Connection) 
+	return common.RunLuaActionTimeout(appId, userId, actionScript, params, controller.Connection)
 }
 
 /************
@@ -81,30 +81,31 @@ func (controller *Controller) RunAction(appId int, userId int, actionName string
 // The main flow of this microservice: runs an action
 // POST request
 // Params:
-//   app_id number
-//   user_id number
-//   action_name string
-//   action_param string
+//
+//	app_id number
+//	user_id number
+//	action_name string
+//	action_param string
 func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Request) {
 	// performing initial validations
- 	if r.Method != "POST" {
+	if r.Method != "POST" {
 		io.WriteString(w, `{"error":"Invalid method"}`)
 		return
-        }
+	}
 
 	// loading request parameters (action name, app id, action parameters)
 	defer r.Body.Close()
 	bodyBytes, err := io.ReadAll(r.Body)
-        if err != nil {
+	if err != nil {
 		io.WriteString(w, fmt.Sprintf("%s", err))
 		return
-        }
+	}
 	actionInfo := make(map[string]interface{})
 	err = json.Unmarshal(bodyBytes, &actionInfo)
 	if err != nil {
 		io.WriteString(w, `{"error":"Failed to parse JSON"}`)
 		return
-        }
+	}
 	appId := int(actionInfo["app_id"].(float64))
 	userId := int(actionInfo["user_id"].(float64))
 	actionName := actionInfo["action_name"].(string)
@@ -131,4 +132,3 @@ func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Req
 func (controller *Controller) HandleCheckHealth(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, "OK")
 }
-
