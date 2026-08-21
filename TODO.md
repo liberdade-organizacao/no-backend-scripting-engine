@@ -1,125 +1,178 @@
-# Plan: Add MsgPack support alongside JSON
+# Plan: Accept MsgPack alongside JSON with content-negotiation (response format mirrors request format)
 
 ## Background
-
-- Go 1.21 project, standard library `net/http` only (no external web framework).
-- Single dependency set: `branca/v2`, `golang-jwt/v5`, `yuin/gopher-lua`, `modernc.org/sqlite`.
-- One API endpoint accepts payloads: `POST /actions/run` — currently hard-coded to parse JSON via `encoding/json.Unmarshal` into `map[string]interface{}`.
-- No `Content-Type` validation on request, no `Content-Type` header set on response, no `DisallowUnknownFields()`, no field-level validation (raw interface assertions → panic risk).
-- Responses are raw `io.WriteString(w, ...)` with hand-assembled JSON, zero Content-Type header, zero status codes.
-- Tests (3 files, 165 lines) cover controller methods directly — **no HTTP-level handler tests**.
+- Go 1.21 project, standard library `net/http`, no framework
+- `vmihailenco/msgpack/v5` added as pure-Go dependency (no CGO)
+- One endpoint: `POST /actions/run`. Receives a JSON request payload with the same codec-shape payload (error / result), and returns a JSON-shaped response with the same codec-shaped payload.
+- **v2 change**: request format is now mirrored for the response. Request `application/json`  → response `application/json`. Request `application/msgpack` → response `application/msgpack`. Unknown Content-Type → `415 Unsupported Media Type`.
+- No `Content-Type` validation in old code; no response `Content-Type` set.
 
 ## Design decisions (confirmed upfront)
+- **Accept requests** with `Content-Type: application/msgpack` OR `application/json` (case-insensitive, optional `/charset=...`).
+- **Reject** every other Content-Type (including missing) with `415 Unsupported Media Type`.
+- Decode every request into `map[string]interface{}` (JSON-compatible types) via the selected codec.
+- **Encode the response with the same codec** used to decode the request.
+- Response shape is always `map[string]interface{}{"error": nil|string, "result": <any>|nil}`.
+- **New package** `common/codec/codec` with a `Codec` interface and two implementations.
+- **`Controller`** exposes a `codec.Codec` that drives both `decodeBody` and `encodeResponse` for the current request.
 
-- **Accept**: request `Content-Type: application/msgpack` OR `application/json` (case-insensitive, with optional `; charset=utf-8`).
-- **Reject** everything else with `415 Unsupported Media Type`.
-- **Serialize payload into** the same `map[string]interface{}` used today — no second parse path. A `Codec` interface abstracts the format.
-- **Set response `Content-Type` to `application/json`** always (the action response is already JSON-shaped).
-- **Add dependency**: `github.com/vmihailenco/msgpack/v5` (v5 for Go 1.18+ compat; v4 also works with 1.21 — picking v5 since it is the current maintained line and is actively used in the ecosystem).
-- **New package** `common/codec` — not inside `controllers`, so HTTP concerns stay separated from codec selection.
-
-## Investigation findings embedded in plan
-
-- `encoding/json` uses `map[string]interface{}` when unmarshalling into `interface{}` — `application/msgpack` + `vmihailenco/msgpack/v5` produces the same result using `Decoder.Decode(&out)` with an `interface{}` target.
-- Number handling: `json.Unmarshal` turns numbers into `float64` (matches current `interface{}` → `(float64)` assertions). `msgpack` v5 defaults to `float64` for numbers too, so no change needed in existing consumers.
-- `gopher-lua` calls use raw `json.Unmarshal(body, &actionInfo)` then interface assertions — replacing with a codec-agnostic parse preserves compatibility if the map key/value types stay identical.
-- No tests hit the HTTP handler — we need a thin HTTP-level test so regressions in decoding/encoding are caught.
+## Investigation findings
+- `encoding/json` unmarshals into `map[string]interface{}` where numbers become `float64`. `msgpack` v5's default is the same `float64`. Existing consumers in `controllers.go` use `(float64)` assertions unchanged.
+- MsgPack interning via `enc.UseInternedStrings(true)` reduces encoding size when the same key appears repeatedly.
+- `gopher-lua.RunLuaActionTimeout` does string work — no codec-aware path needed on the response side.
+- No tests cover HTTP-level handler; need a new set of HTTP-level tests.
 
 ---
 
-## Steps
+## Step 1 — Add the dependency (`/go.mod`)
+- `go get github.com/vmihailenco/msgpack/v5` from `/Users/calvesdasilvajunior/Developer/betty/dev/baas/scripting`.
+- Run `go mod tidy` after. Confirm `go.sum` is updated. No CGO required.
 
-### Step 1 — Add the MsgPack dependency
+---
 
-- `go get github.com/vmihailenco/msgpack/v5` in project root.
-- Confirm `go.sum` is updated; no `CGO` required (pure-Go codec).
-
-### Step 2 — Create the codec interface (`common/codec/codec.go`)
+## Step 2 — Create the `common/codec` package
+File: `common/codec/codec.go`
 
 - Define `type Codec interface { Decode(r io.Reader, v interface{}) error; Encode(w io.Writer, v interface{}) error }`.
-- Create `var Default = NewJSON()` exported default (alias) so existing call sites can migrate by swapping `Default` for `msgpack.Default` downstream if ever needed.
-- Two implementations:
-  - `jsonCodec` — wraps `encoding/json`. `Decode` reads all of `r` then calls `json.Unmarshal(b, v)`. `Encode` calls `json.Marshal(v)`, then `w.Write(b)`.
-  - `msgpackCodec` — wraps `vmihailenco/msgpack/v5`. `Decode` calls `msgpack.NewDecoder(r).Decode(v)`. `Encode` calls `msgpack.NewEncoder(w).Encode(v)`.
-- New exported constructors: `NewJSON() Codec`, `NewMsgPack() Codec`.
-- `NewMsgPack()` must also call `msgpack.EnableInterning()` on the decoder (and optionally encoder) so repeated string keys — the very reason to use MsgPack — are de-duplicated.
-- Add unit tests in `common/codec/codec_test.go`:
-  - round-trip a `map[string]interface{}` through JSON and MsgPack, confirm identical `reflect.DeepEqual` output (key order preserved).
-  - confirm MsgPack binary output is smaller than JSON for the same payload (assert `len(msgpackBytes) < len(jsonBytes)`).
-  - confirm `NewMsgPack()` enables interned output (encode same struct twice, confirm second encoding is shorter than non-interned equivalent — exercise by checking that the second encoding skips the key bytes).
-  - confirm invalid JSON produces `*json.UnmarshalTypeError`-shaped errors and invalid MsgPack produces `*msgpack.InvalidUnmarshalError`-shaped (just check `err != nil`, non-specific — keep the test surface small).
-
-### Step 3 — Wire Content-Type into the HTTP layer (`controllers/controllers.go`)
-
-- In `HandleRunAction`:
-  1. **Drop the existing raw `json.Unmarshal(bodyBytes, ...)` path.**
-  2. Switch the Content-Type switch to a select on `r.Header.Get("Content-Type")` — strip any `; charset=...` suffix by splitting on `;` and using the first segment, lower-cased.
-  3. Cases:
-     - `"application/json"` → `codec.NewJSON()`.
-     - `"application/msgpack"` → `codec.NewMsgPack()`.
-     - anything else → set `w.WriteHeader(415)`, write `{"error":"Unsupported Media Type"}`, `return`.
-  4. If the request body cannot be read, set `w.WriteHeader(400)`, write `{"error":"Could not read request body: <err>","result":null}`, return.
-  5. Decode into the existing `map[string]interface{}` using `codec.Decode(r, &actionInfo)`. On error, set `w.WriteHeader(400)`, write existing `{"error":"Failed to parse JSON","result":null}` (rename to `"Could not decode request body"` below for accuracy, but keep the JSON wire shape identical).
-  6. Extract `app_id`, `user_id`, `action_name`, `action_param` the same way (same interface assertions).
-- **Rename the 400 response text** `"Failed to parse JSON"` to `"Could not decode request body"` — it is the honest description regardless of format. This is a wire-format change, but a rename, not a structural one.
-- Add a second method `func decodeBody(r *http.Request, w http.ResponseWriter, out interface{}) (codec Codec, err error)` so the Content-Type dispatch and body-reading logic is isolated and unit-friendly — returns the selected codec so callers can inspect if needed in the future (returning `codec` is purely so the dispatch logic is self-contained and testable without stubbing a global).
-
-### Step 4 — Set response Content-Type on all paths in `HandleRunAction`
-
-- Before every `w.WriteHeader`/`io.WriteString`, set `w.Header().Set("Content-Type", "application/json; charset=utf-8")`.
-- Apply to:
-  - Invalid method (`405 Method Not Allowed`).
-  - Body read failure (`400`).
-  - Decode failure (`400`).
-  - Permission failure (`{error, result}` JSON — currently `200`).
-  - Script not found (`{error, result}` — currently `200`).
-  - Lua execution failure (`{"error":"Could not run Lua script","result":null}` — currently `200`).
-  - Success (`{"error":null,"result":"..."}` — currently `200`).
-- This is required so clients can reliably negotiate the response format too.
-
-### Step 5 — Add HTTP-level tests for `HandleRunAction`
-
-- In `controllers/controllers_test.go` (reuse `setupBasicTest` helper):
-  - `TestHandleRunAction_Json` — `httptest.NewServer(HandleRunAction)`, POST with `Content-Type: application/json`, assert `200`, parse response JSON, confirm fields.
-  - `TestHandleRunAction_MsgPack` — same but `Content-Type: application/msgpack`, using `msgpack.Marshal` to build the body. Assert `200` and identical result to JSON test.
-  - `TestHandleRunAction_PropertiesMsgPackSmaller` — assert `len(msgpackBody) < len(jsonBody)` for the same payload (smoke test that the codec is actually wired up).
-  - `TestHandleRunAction_UnknownContentType` — send `Content-Type: application/xml`, assert `415`.
-  - `TestHandleRunAction_NoContentType` — send body with no Content-Type header, assert `415`.
-  - `TestHandleRunAction_BadJson` — send `{not json}`, assert `400` with decode-error message.
-  - `TestHandleRunAction_BadMsgPack` — send random bytes with MsgPack Content-Type, assert `400`.
-  - `TestHandleRunAction_BinaryPayload` — confirm binary MsgPack payload containing the same keys is accepted and produces the same result.
-- Existing controller-unit tests are **not touched** — they exercise `CheckPermission` and `RunAction` directly without an HTTP layer, and remain valid.
-
-### Step 6 — Update `services/services.go` register if needed
-
-- Inspect current mux registration. If the mux is `http.DefaultServeMux`, no change — Content-Type selection happens inside the handler, not in routing.
-- If a non-default mux is used (unlikely given current code; `services.go:22-23` uses `http.HandleFunc`), no change required. Document in step if any routing-level refactor is needed.
-
-### Step 7 — Run tests, lint, build
-
-- `make test` — all existing tests pass.
-- `go vet ./...` — no new warnings.
-- `make build` — binary compiles.
-- `make docker-build` — Docker image builds.
-- `make run` (or `./main.exe up`):
-  - Verify existing JSON client: `curl -X POST http://localhost:7781/actions/run -H "Content-Type: application/json" -d '{"app_id":"A-1","user_id":"U-1","action_name":"sample","action_param":""}'` — should return same JSON as before.
-  - Verify MsgPack client: build the request body with a small Go snippet or with `msgpack-cli`, send with `Content-Type: application/msgpack`, confirm identical response body (parse both with `jq` or equivalent).
-  - Verify rejected Content-Type: send `application/xml`, confirm `415`.
-
-### Step 8 — Inspect and commit
-
-- Inspect `git diff` to confirm: new file `common/codec/codec.go`, new file `common/codec/codec_test.go`, modified `controllers/controllers.go` (with Content-Type dispatch and response Content-Type), modified `controllers/controllers_test.go` (HTTP-level tests), updated `go.mod`/`go.sum`.
-- Commit with message `feat: accept MsgPack payloads alongside JSON`.
+- Implement two codecs:
+  - **`jsonCodec`**: `Decode` calls `io.ReadAll(r)` then `json.Unmarshal(data, v)`. `Encode` calls `json.Marshal(v)` then `w.Write(data)`.
+  - **`msgpackCodec`**: `Decode` calls `msgpack.NewDecoder(r).Decode(v)` (default behavior — numbers are `float64`). `Encode` calls `msgpack.NewEncoder(w).UseInternedStrings(true).Encode(v)`.
+- Exported constructors: `NewJSON() Codec`, `NewMsgPack() Codec`.
 
 ---
 
-## Files to touch (estimated)
+## Step 3 — Wire Content-Type dispatch into the HTTP layer
+File: `controllers/controllers.go`
 
+- Add `import "strings"` alongside existing imports.
+- Replace the hard-coded `json.Unmarshal(bodyBytes, &actionInfo)` read path inside the handler with a new **`decodeBody` function**:
+  ```go
+  func decodeBody(r *http.Request, w http.ResponseWriter, out interface{}) (codec.Codec, error) {
+      ct := r.Header.Get("Content-Type")
+      if idx := strings.IndexByte(ct, ';'); idx >= 0 {
+          ct = strings.TrimRight(ct[:idx], " ")
+      }
+      ct = strings.TrimSpace(ct)
+      ct = strings.ToLower(ct)
+      switch ct {
+      case "application/json":
+          enc := codec.NewJSON()
+          if err := enc.Decode(io.NewSectionReader(r.Body, 0, math.MaxInt32), out); err != nil {
+              return nil, err
+          }
+          return enc, nil
+      case "application/msgpack":
+          enc := codec.NewMsgPack()
+          if err := enc.Decode(io.NewSectionReader(r.Body, 0, math.MaxInt32), out); err != nil {
+              return nil, err
+          }
+          return enc, nil
+      }
+      return nil, fmt.Errorf("unsupported content-type: %s", ct)
+  }
+  ```
+- Update the handler to use `decodeBody` and call the response-encoder with the returned codec:
+  - Drop the manual `json.Unmarshal(bodyBytes, ...)` block.
+  - Capture `enc codec.Codec, err error := decodeBody(r, w, &actionInfo)`.
+  - On `err != nil`, if `err.Error() == "unsupported content-type: ..."` → `w.WriteHeader(415)` with `{"error":"Unsupported Media Type"}`. Else `w.WriteHeader(400)` with `{"error":"Could not decode request body"}`.
+  - After the action runs, serialize the response with `enc.Encode(w, ...)`.
+
+- Add a **`encodeResponse` helper** so every path uses the same codec-shaped output:
+  ```go
+  func encodeResponse(w http.ResponseWriter, enc codec.Codec, status int, payload map[string]interface{}) error {
+      w.Header().Set("Content-Type", enc.ContentType())
+      w.WriteHeader(status)
+      return enc.Encode(w, payload)
+  }
+  ```
+- Add a tiny method on each codec to export its content type:
+  ```go
+  type jsonCodec struct{}
+  func (jsonCodec) ContentType() string { return "application/json" }
+
+  type msgpackCodec struct{}
+  func (msgpackCodec) ContentType() string { return "application/msgpack" }
+  ```
+
+---
+
+## Step 4 — Wire `Content-Type` for each codec into each HTTP response path
+File: `controllers/controllers.go`
+
+Every response path (invalid method, body read failure, decode failure, permission failure, script-not-found, Lua execution failure, success) must:
+- Set response `Content-Type` to the *same* value as the request Content-Type.
+- Use the same codec used to decode the request for encoding the response.
+
+Implementation:
+- Use the `enc codec.Codec` returned by `decodeBody`. All `w.WriteHeader(...)` and `io.WriteString(...)` calls are replaced by `encodeResponse(w, enc, status, payload)`.
+- For unknown Content-Type → `415 Unsupported Media Type`. Use `{"error":"Unsupported Media Type"}` as the payload via the JSON codec (irrelevant because it will not be consumed by a MsgPack consumer).
+
+---
+
+## Step 5 — Add HTTP-level tests for `HandleRunAction`
+File: `controllers/controllers_test.go`
+
+Add to `controllers` package tests. No third-party libraries needed; use `httptest.NewServer`, `encoding/json`, `io.ReadAll`, and the `common/codec` package:
+
+- **`TestHandleRunAction_Json`** — POST with `Content-Type: application/json`. Assert response status `200`, `Content-Type: application/json` header, body is equal to a known-good JSON shape.
+- **`TestHandleRunAction_MsgPack`** — POST with `Content-Type: application/msgpack`, body = `codec.NewMsgPack().Encode(...)`. Assert response status `200`, `Content-Type: application/msgpack` header, body decodes via `codec.NewMsgPack().Decode(...)` to the same payload as the JSON test. **Round-trip assertion.**
+- **`TestHandleRunAction_PropertiesMsgPackSmaller`** — same as MsgPack test, additionally assert `len(msgpackBody) < len(jsonBody)` for the same action data (smoke-test that interning is active).
+- **`TestHandleRunAction_UnknownContentType`** — POST with `Content-Type: application/xml`. Assert status `415`.
+- **`TestHandleRunAction_NoContentType`** — POST with no Content-Type header. Assert status `415`.
+- **`TestHandleRunAction_BadJson`** — POST with `Content-Type: application/json` and body `{not json}`. Assert status `400`, body contains `"Could not decode request body"`.
+- **`TestHandleRunAction_BadMsgPack`** — POST with `Content-Type: application/msgpack` and body `random bytes`. Assert status `400`.
+- **`TestHandleRunAction_BinaryPayload`** — POST a binary MsgPack payload with the same keys as the JSON payload. Assert status `200`, `Content-Type: application/msgpack` in the response, and body decodes to an identical payload to the JSON test.
+
+---
+
+## Step 6 — Update `services/services.go` register if needed
+Inspect current mux registration. It uses `http.HandleFunc` (from standard library). No code change because Content-Type selection is inside the handler, not routing.
+- No change here. Document: "Content-Type dispatch is inside `HandleRunAction`; `services.go` is unchanged."
+
+---
+
+## Step 7 — Build, lint, and smoke-test
+- `go build ./... && go vet ./...` — clean.
+- `go test ./...` — all existing and new tests pass.
+- `make test` — equivalent.
+- `go build -o main.exe .` — binary compiles.
+- `./main.exe up` (or via `make run`) — start the server on `127.0.0.1:7781`.
+
+Manual verification (all should return the matching Content-Type):
+```
+# JSON round-trip
+curl -s -i -X POST http://localhost:7781/actions/run \
+     -H "Content-Type: application/json" \
+     -d '{"app_id":{"$numberInt":"1"},"user_id":{"$numberInt":"1"},"action_name":"sample","action_param":""}'
+
+# MsgPack round-trip
+# build binary payload locally via Go: msgpack.Marshal(map[string]interface{}{...})
+curl -s -i -X POST http://localhost:7781/actions/run \
+     -H "Content-Type: application/msgpack" \
+     --data-binary <msgpack-bytes.bin>
+
+# Rejected Content-Type
+curl -s -i -X POST http://localhost:7781/actions/run \
+     -H "Content-Type: application/xml" \
+     -d "<xml/>"
+```
+- All three responses must have `Content-Type` matching the request.
+- Unknown Content-Type → `415 Unsupported Media Type`.
+
+---
+
+## Step 8 — Commit
+- `go mod tidy && git diff` to inspect.
+- Commit with message: `feat: accept MsgPack payloads alongside JSON with content-negotiation`.
+
+---
+
+## Files touched (final v2 list)
 | Action | Path |
 |---|---|
 | Add | `common/codec/codec.go` |
 | Add | `common/codec/codec_test.go` |
-| Add | `go.sum` entries (via dependency install) |
+| Add | `go.sum` entries |
 | Modify | `controllers/controllers.go` |
 | Modify | `controllers/controllers_test.go` |
 | Modify | `go.mod` (new dep) |
