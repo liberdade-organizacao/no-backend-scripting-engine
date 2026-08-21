@@ -5,9 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"liberdade.bsb.br/baas/scripting/common"
-	"liberdade.bsb.br/baas/scripting/database"
 	"net/http"
+	"strings"
+	"bytes"
+
+	"liberdade.bsb.br/baas/scripting/common"
+	"liberdade.bsb.br/baas/scripting/common/codec"
+	"liberdade.bsb.br/baas/scripting/database"
 )
 
 // Struct to encapsulate required mechanisms to run this service
@@ -29,6 +33,44 @@ func NewController() *Controller {
 // Destroys a controller
 func (controller *Controller) Close() {
 	controller.Connection.Close()
+}
+
+// decodeBody reads the request body, selects the appropriate codec based on
+// Content-Type (stripping charset and lower-casing), and decodes into out.
+// Returns the codec used or an error.
+func decodeBody(r *http.Request, out interface{}) (codec.Codec, error) {
+	ct := r.Header.Get("Content-Type")
+	if idx := strings.IndexByte(ct, ';'); idx >= 0 {
+		ct = strings.TrimSpace(ct[:idx])
+	}
+	ct = strings.ToLower(ct)
+
+	switch ct {
+	case "application/json":
+		{
+			bodyBytes, err := io.ReadAll(r.Body)
+			if err != nil {
+				return nil, err
+			}
+			if err := json.Unmarshal(bodyBytes, out); err != nil {
+				return nil, err
+			}
+			return codec.NewJSON(), nil
+		}
+	case "application/msgpack":
+		{
+			bodyBytes, err := io.ReadAll(r.Body)
+			if err != nil {
+				return nil, err
+			}
+			mpCodec := codec.NewMsgPack()
+			if err := mpCodec.Decode(bytes.NewReader(bodyBytes), out); err != nil {
+				return nil, err
+			}
+			return mpCodec, nil
+		}
+	}
+	return nil, fmt.Errorf("unsupported content-type: %s", ct)
 }
 
 /***********************
@@ -87,23 +129,21 @@ func (controller *Controller) RunAction(appId int, userId int, actionName string
 //	action_name string
 //	action_param string
 func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
 	// performing initial validations
 	if r.Method != "POST" {
+		w.WriteHeader(400)
 		io.WriteString(w, `{"error":"Invalid method"}`)
 		return
 	}
 
 	// loading request parameters (action name, app id, action parameters)
 	defer r.Body.Close()
-	bodyBytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		io.WriteString(w, fmt.Sprintf("%s", err))
-		return
-	}
 	actionInfo := make(map[string]interface{})
-	err = json.Unmarshal(bodyBytes, &actionInfo)
-	if err != nil {
-		io.WriteString(w, `{"error":"Failed to parse JSON"}`)
+	if _, err := decodeBody(r, &actionInfo); err != nil {
+		w.WriteHeader(400)
+		io.WriteString(w, `{"error":"Could not decode request body","result":null}`)
 		return
 	}
 	appId := int(actionInfo["app_id"].(float64))
@@ -111,24 +151,35 @@ func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Req
 	actionName := actionInfo["action_name"].(string)
 	actionParam := actionInfo["action_param"].(string)
 
-	err = controller.CheckPermission(appId, userId, actionName)
+	err := controller.CheckPermission(appId, userId, actionName)
 	if err != nil {
-		io.WriteString(w, `{"error":"User does not required permissions to run this action"}`)
+		w.WriteHeader(400)
+		io.WriteString(w, `{"error":"User does not have required permissions to run this action","result":null}`)
 		return
 	}
 
 	result, err := controller.RunAction(appId, userId, actionName, actionParam)
 	if err != nil {
-		io.WriteString(w, `{"error":"Could not run Lua script"}`)
+		w.WriteHeader(500)
+		io.WriteString(w, `{"error":"Could not run Lua script","result":null}`)
 		return
 	}
 
-	payload := fmt.Sprintf(`{"error":null,"result":"%s"}`, result)
-	io.WriteString(w, payload)
-	return
+	io.WriteString(w, fmt.Sprintf(`{"error":null,"result":%s}`, escapeJSON(result)))
+}
+
+// escapeJSON escapes special characters in a string for safe JSON embedding.
+// Returns JSON-encoded string.
+func escapeJSON(s string) string {
+	data, err := json.Marshal(s)
+	if err != nil {
+		return "\"\""
+	}
+	return string(data)
 }
 
 // Checks if the service is running well
 func (controller *Controller) HandleCheckHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	io.WriteString(w, "OK")
 }
