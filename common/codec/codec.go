@@ -11,6 +11,8 @@ import (
 type Codec interface {
 	Decode(r io.Reader, v interface{}) error
 	Encode(w io.Writer, v interface{}) error
+	// ContentType returns the MIME type for this codec (e.g., "application/json").
+	ContentType() string
 }
 
 // NewJSON returns a codec that uses the encoding/json standard library.
@@ -25,7 +27,7 @@ func NewMsgPack() Codec {
 
 type jsonCodec struct{}
 
-func (jsonCodec) Decode(r io.Reader, v interface{}) error {
+func (c jsonCodec) Decode(r io.Reader, v interface{}) error {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return err
@@ -33,13 +35,17 @@ func (jsonCodec) Decode(r io.Reader, v interface{}) error {
 	return json.Unmarshal(data, v)
 }
 
-func (jsonCodec) Encode(w io.Writer, v interface{}) error {
+func (c jsonCodec) Encode(w io.Writer, v interface{}) error {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
 	_, err = w.Write(data)
 	return err
+}
+
+func (c jsonCodec) ContentType() string {
+	return "application/json"
 }
 
 type msgpackCodec struct{}
@@ -53,4 +59,8 @@ func (c msgpackCodec) Encode(w io.Writer, v interface{}) error {
 	enc := msgpack.NewEncoder(w)
 	enc.UseInternedStrings(true)
 	return enc.Encode(v)
+}
+
+func (c msgpackCodec) ContentType() string {
+	return "application/msgpack"
 }

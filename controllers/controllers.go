@@ -35,6 +35,14 @@ func (controller *Controller) Close() {
 	controller.Connection.Close()
 }
 
+// encodeResponse serializes payload using enc and writes it to w with status and
+// the matching Content-Type header.
+func encodeResponse(w http.ResponseWriter, enc codec.Codec, status int, payload map[string]interface{}) {
+	w.Header().Set("Content-Type", enc.ContentType())
+	w.WriteHeader(status)
+	_ = enc.Encode(w, payload)
+}
+
 // decodeBody reads the request body, selects the appropriate codec based on
 // Content-Type (stripping charset and lower-casing), and decodes into out.
 // Returns the codec used or an error.
@@ -129,43 +137,50 @@ func (controller *Controller) RunAction(appId int, userId int, actionName string
 //	action_name string
 //	action_param string
 func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-
 	// performing initial validations
 	if r.Method != "POST" {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(400)
-		io.WriteString(w, `{"error":"Invalid method"}`)
+		io.WriteString(w, `{"error":"Invalid method","result":null}`)
 		return
 	}
 
 	// loading request parameters (action name, app id, action parameters)
 	defer r.Body.Close()
 	actionInfo := make(map[string]interface{})
-	if _, err := decodeBody(r, &actionInfo); err != nil {
+	rc, err := decodeBody(r, &actionInfo)
+	if err != nil {
+		if strings.Contains(err.Error(), "unsupported content-type") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(415)
+			io.WriteString(w, `{"error":"Unsupported Media Type"}`)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(400)
 		io.WriteString(w, `{"error":"Could not decode request body","result":null}`)
 		return
 	}
+
 	appId := int(actionInfo["app_id"].(float64))
 	userId := int(actionInfo["user_id"].(float64))
 	actionName := actionInfo["action_name"].(string)
 	actionParam := actionInfo["action_param"].(string)
 
-	err := controller.CheckPermission(appId, userId, actionName)
+	err = controller.CheckPermission(appId, userId, actionName)
 	if err != nil {
-		w.WriteHeader(400)
-		io.WriteString(w, `{"error":"User does not have required permissions to run this action","result":null}`)
+		encodeResponse(w, rc, 400, map[string]interface{}{"error": "User does not have required permissions to run this action", "result": nil})
 		return
 	}
 
 	result, err := controller.RunAction(appId, userId, actionName, actionParam)
 	if err != nil {
-		w.WriteHeader(500)
-		io.WriteString(w, `{"error":"Could not run Lua script","result":null}`)
+		encodeResponse(w, rc, 500, map[string]interface{}{"error": "Could not run Lua script", "result": nil})
 		return
 	}
 
-	io.WriteString(w, fmt.Sprintf(`{"error":null,"result":%s}`, escapeJSON(result)))
+	payload := map[string]interface{}{"error": nil, "result": result}
+	encodeResponse(w, rc, 200, payload)
 }
 
 // escapeJSON escapes special characters in a string for safe JSON embedding.
