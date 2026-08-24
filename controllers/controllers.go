@@ -139,9 +139,7 @@ func (controller *Controller) RunAction(appId int, userId int, actionName string
 func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Request) {
 	// performing initial validations
 	if r.Method != "POST" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(400)
-		io.WriteString(w, `{"error":"Invalid method","result":null}`)
+		encodeResponse(w, codec.NewJSON(), 400, map[string]interface{}{"error": "Invalid method", "result": nil})
 		return
 	}
 
@@ -151,14 +149,13 @@ func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Req
 	rc, err := decodeBody(r, &actionInfo)
 	if err != nil {
 		if strings.Contains(err.Error(), "unsupported content-type") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(415)
-			io.WriteString(w, `{"error":"Unsupported Media Type"}`)
+			// Unknown Content-Type: respond with a JSON error payload via the
+			// JSON codec. It is irrelevant here because no MsgPack consumer
+			// would be present in this situation.
+			encodeResponse(w, codec.NewJSON(), 415, map[string]interface{}{"error": "Unsupported Media Type"})
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(400)
-		io.WriteString(w, `{"error":"Could not decode request body","result":null}`)
+		encodeResponse(w, codec.NewJSON(), 400, map[string]interface{}{"error": "Could not decode request body", "result": nil})
 		return
 	}
 
