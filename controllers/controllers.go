@@ -1,13 +1,13 @@
 package controllers
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
-	"bytes"
 
 	"liberdade.bsb.br/baas/scripting/common"
 	"liberdade.bsb.br/baas/scripting/common/codec"
