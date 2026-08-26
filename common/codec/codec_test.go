@@ -9,8 +9,8 @@ import (
 
 func TestCodecRoundTrip(t *testing.T) {
 	payload := map[string]interface{}{
-		"app_id":     float64(1),
-		"user_id":    "U-1",
+		"app_id":      float64(1),
+		"user_id":     "U-1",
 		"action_name": "sample",
 		"action_param": map[string]interface{}{
 			"key": "value",
@@ -48,8 +48,8 @@ func TestCodecRoundTrip(t *testing.T) {
 
 func TestMsgPackSmallerThanJSON(t *testing.T) {
 	payload := map[string]interface{}{
-		"app_id":     float64(1),
-		"user_id":    "U-1",
+		"app_id":      float64(1),
+		"user_id":     "U-1",
 		"action_name": "sample_action_with_some_length",
 		"action_param": map[string]interface{}{
 			"key1": "value1",
