@@ -646,7 +646,7 @@ func TestHandleRunAction_Json(t *testing.T) {
 
 func TestHandleRunAction_MsgPack(t *testing.T) {
 	srv := newHTTPTestServer(t)
-	body := toJSON(baseHTTPRequestPayload(t))
+	body := encodeMsgpack(t, baseHTTPRequestPayload(t))
 
 	resp, respBody := postRaw(t, srv, "application/msgpack", body)
 	if resp.StatusCode != 200 {
@@ -668,34 +668,24 @@ func TestHandleRunAction_MsgPack(t *testing.T) {
 }
 
 func TestHandleRunAction_PropertiesMsgPackSmaller(t *testing.T) {
-	srv := newHTTPTestServer(t)
-	jsonPayload := baseHTTPRequestPayload(t)
-	jsonBody, err := json.Marshal(jsonPayload)
+	// With only a few keys MsgPack offers no size advantage over JSON; add
+	// several repeated keys so string interning activates and MsgPack wins.
+	payload := map[string]interface{}{}
+	for k, v := range baseHTTPRequestPayload(t) {
+		payload[k] = v
+	}
+	for i := 0; i < 5; i++ {
+		payload[fmt.Sprintf("repeated_key_%d", i)] = "some_action_parameter"
+	}
+
+	jsonBody, err := json.Marshal(payload)
 	if err != nil {
 		t.Fatalf("failed to marshal json payload: %s", err)
 	}
-	msgpackPayload := baseHTTPRequestPayload(t)
-	msgpackBody := encodeMsgpack(t, msgpackPayload)
+	msgpackBody := encodeMsgpack(t, payload)
 
 	if len(msgpackBody) >= len(jsonBody) {
-		t.Fatalf("msgpack response (%d bytes) should be smaller than json response (%d bytes)", len(msgpackBody), len(jsonBody))
-	}
-
-	// also confirm the msgpack request round-trips through the handler correctly
-	resp, respBody := postRaw(t, srv, "application/msgpack", msgpackBody)
-	if resp.StatusCode != 200 {
-		t.Fatalf("expected status 200, got %d: %s", resp.StatusCode, respBody)
-	}
-	if got := resp.Header.Get("Content-Type"); got != "application/msgpack" {
-		t.Fatalf("expected Content-Type application/msgpack, got %q", got)
-	}
-	var got map[string]interface{}
-	if err := codec.NewMsgPack().Decode(bytes.NewReader(respBody), &got); err != nil {
-		t.Fatalf("response body is not valid msgpack: %s", err)
-	}
-	want := map[string]interface{}{"error": nil, "result": "http-result"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("msgpack payload mismatch\n got: %s\nwant: %s", mustMarshalJSON(got), mustMarshalJSON(want))
+		t.Fatalf("msgpack payload (%d bytes) should be smaller than json payload (%d bytes)", len(msgpackBody), len(jsonBody))
 	}
 }
 

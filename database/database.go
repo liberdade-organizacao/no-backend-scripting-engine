@@ -28,6 +28,7 @@ func NewDatabase() Conn {
 
 	connection := Conn{
 		Database: db,
+		Connection: connString,
 	}
 
 	return connection
