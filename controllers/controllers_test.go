@@ -597,7 +597,7 @@ func postRaw(t *testing.T, srv *httptest.Server, contentType string, body []byte
 	return resp, respBody
 }
 
-func toJSON(v map[string]interface{}) []byte {
+func toJson(v map[string]interface{}) []byte {
 	b, err := json.Marshal(v)
 	if err != nil {
 		panic(fmt.Sprintf("failed to marshal payload: %s", err))
@@ -614,7 +614,7 @@ func encodeMsgpack(t *testing.T, v map[string]interface{}) []byte {
 	return buf.Bytes()
 }
 
-func mustMarshalJSON(v interface{}) string {
+func mustMarshalJson(v interface{}) string {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Sprintf("%v", v)
@@ -624,7 +624,7 @@ func mustMarshalJSON(v interface{}) string {
 
 func TestHandleRunAction_Json(t *testing.T) {
 	srv := newHTTPTestServer(t)
-	body := toJSON(baseHTTPRequestPayload(t))
+	body := toJson(baseHTTPRequestPayload(t))
 
 	resp, respBody := postRaw(t, srv, "application/json", body)
 	if resp.StatusCode != 200 {
@@ -637,10 +637,10 @@ func TestHandleRunAction_Json(t *testing.T) {
 	want := map[string]interface{}{"error": nil, "result": "http-result"}
 	var got map[string]interface{}
 	if err := json.Unmarshal(respBody, &got); err != nil {
-		t.Fatalf("response body is not valid JSON: %s", err)
+		t.Fatalf("response body is not valid Json: %s", err)
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("unexpected response body\n got: %s\nwant: %s", mustMarshalJSON(got), mustMarshalJSON(want))
+		t.Fatalf("unexpected response body\n got: %s\nwant: %s", mustMarshalJson(got), mustMarshalJson(want))
 	}
 }
 
@@ -648,12 +648,12 @@ func TestHandleRunAction_MsgPack(t *testing.T) {
 	srv := newHTTPTestServer(t)
 	body := encodeMsgpack(t, baseHTTPRequestPayload(t))
 
-	resp, respBody := postRaw(t, srv, "application/msgpack", body)
+	resp, respBody := postRaw(t, srv, "application/vnd.msgpack", body)
 	if resp.StatusCode != 200 {
 		t.Fatalf("expected status 200, got %d: %s", resp.StatusCode, respBody)
 	}
-	if got := resp.Header.Get("Content-Type"); got != "application/msgpack" {
-		t.Fatalf("expected Content-Type application/msgpack, got %q", got)
+	if got := resp.Header.Get("Content-Type"); got != "application/vnd.msgpack" {
+		t.Fatalf("expected Content-Type application/vnd.msgpack, got %q", got)
 	}
 
 	var got map[string]interface{}
@@ -663,12 +663,12 @@ func TestHandleRunAction_MsgPack(t *testing.T) {
 
 	want := map[string]interface{}{"error": nil, "result": "http-result"}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("msgpack round-trip mismatch\n got: %s\nwant: %s", mustMarshalJSON(got), mustMarshalJSON(want))
+		t.Fatalf("msgpack round-trip mismatch\n got: %s\nwant: %s", mustMarshalJson(got), mustMarshalJson(want))
 	}
 }
 
 func TestHandleRunAction_PropertiesMsgPackSmaller(t *testing.T) {
-	// With only a few keys MsgPack offers no size advantage over JSON; add
+	// With only a few keys MsgPack offers no size advantage over Json; add
 	// several repeated keys so string interning activates and MsgPack wins.
 	payload := map[string]interface{}{}
 	for k, v := range baseHTTPRequestPayload(t) {
@@ -691,7 +691,7 @@ func TestHandleRunAction_PropertiesMsgPackSmaller(t *testing.T) {
 
 func TestHandleRunAction_UnknownContentType(t *testing.T) {
 	srv := newHTTPTestServer(t)
-	body := toJSON(baseHTTPRequestPayload(t))
+	body := toJson(baseHTTPRequestPayload(t))
 
 	resp, respBody := postRaw(t, srv, "application/xml", body)
 	if resp.StatusCode != 415 {
@@ -701,7 +701,7 @@ func TestHandleRunAction_UnknownContentType(t *testing.T) {
 
 func TestHandleRunAction_NoContentType(t *testing.T) {
 	srv := newHTTPTestServer(t)
-	body := toJSON(baseHTTPRequestPayload(t))
+	body := toJson(baseHTTPRequestPayload(t))
 
 	resp, respBody := postRaw(t, srv, "", body)
 	if resp.StatusCode != 415 {
@@ -724,7 +724,7 @@ func TestHandleRunAction_BadJson(t *testing.T) {
 func TestHandleRunAction_BadMsgPack(t *testing.T) {
 	srv := newHTTPTestServer(t)
 
-	resp, respBody := postRaw(t, srv, "application/msgpack", []byte("random garbage bytes"))
+	resp, respBody := postRaw(t, srv, "application/vnd.msgpack", []byte("random garbage bytes"))
 	if resp.StatusCode != 400 {
 		t.Fatalf("expected status 400, got %d: %s", resp.StatusCode, respBody)
 	}
@@ -735,12 +735,12 @@ func TestHandleRunAction_BinaryPayload(t *testing.T) {
 	msgpackPayload := baseHTTPRequestPayload(t)
 	body := encodeMsgpack(t, msgpackPayload)
 
-	resp, respBody := postRaw(t, srv, "application/msgpack", body)
+	resp, respBody := postRaw(t, srv, "application/vnd.msgpack", body)
 	if resp.StatusCode != 200 {
 		t.Fatalf("expected status 200, got %d: %s", resp.StatusCode, respBody)
 	}
-	if got := resp.Header.Get("Content-Type"); got != "application/msgpack" {
-		t.Fatalf("expected Content-Type application/msgpack, got %q", got)
+	if got := resp.Header.Get("Content-Type"); got != "application/vnd.msgpack" {
+		t.Fatalf("expected Content-Type application/vnd.msgpack, got %q", got)
 	}
 
 	var got map[string]interface{}
@@ -749,6 +749,6 @@ func TestHandleRunAction_BinaryPayload(t *testing.T) {
 	}
 	want := map[string]interface{}{"error": nil, "result": "http-result"}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("binary msgpack payload mismatch\n got: %s\nwant: %s", mustMarshalJSON(got), mustMarshalJSON(want))
+		t.Fatalf("binary msgpack payload mismatch\n got: %s\nwant: %s", mustMarshalJson(got), mustMarshalJson(want))
 	}
 }

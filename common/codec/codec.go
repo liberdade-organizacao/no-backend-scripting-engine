@@ -11,12 +11,11 @@ import (
 type Codec interface {
 	Decode(r io.Reader, v interface{}) error
 	Encode(w io.Writer, v interface{}) error
-	// ContentType returns the MIME type for this codec (e.g., "application/json").
 	ContentType() string
 }
 
-// NewJSON returns a codec that uses the encoding/json standard library.
-func NewJSON() Codec {
+// NewJson returns a codec that uses the encoding/json standard library.
+func NewJson() Codec {
 	return jsonCodec{}
 }
 
@@ -62,5 +61,5 @@ func (c msgpackCodec) Encode(w io.Writer, v interface{}) error {
 }
 
 func (c msgpackCodec) ContentType() string {
-	return "application/msgpack"
+	return "application/vnd.msgpack"
 }

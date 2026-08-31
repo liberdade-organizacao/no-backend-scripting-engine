@@ -22,7 +22,7 @@ func TestCodecRoundTrip(t *testing.T) {
 		codec Codec
 		label string
 	}{
-		{"JSON", NewJSON(), "json"},
+		{"Json", NewJson(), "json"},
 		{"MsgPack", NewMsgPack(), "msgpack"},
 	}
 
@@ -46,7 +46,7 @@ func TestCodecRoundTrip(t *testing.T) {
 	}
 }
 
-func TestMsgPackSmallerThanJSON(t *testing.T) {
+func TestMsgPackSmallerThanJson(t *testing.T) {
 	payload := map[string]interface{}{
 		"app_id":      float64(1),
 		"user_id":     "U-1",
@@ -71,7 +71,7 @@ func TestMsgPackSmallerThanJSON(t *testing.T) {
 	}
 
 	if len(msgpackBytes.Bytes()) >= len(jsonBytes) {
-		t.Errorf("MsgPack payload (%d bytes) should be smaller than JSON (%d bytes)",
+		t.Errorf("MsgPack payload (%d bytes) should be smaller than Json (%d bytes)",
 			len(msgpackBytes.Bytes()), len(jsonBytes))
 	}
 }
@@ -95,12 +95,12 @@ func TestMsgPackInterning(t *testing.T) {
 	}
 }
 
-func TestJSONDecodeError(t *testing.T) {
-	c := NewJSON()
+func TestJsonDecodeError(t *testing.T) {
+	c := NewJson()
 	var v map[string]interface{}
 	err := c.Decode(bytes.NewReader([]byte("{not json}")), &v)
 	if err == nil {
-		t.Error("expected error for invalid JSON")
+		t.Error("expected error for invalid Json")
 	}
 }
 

@@ -63,9 +63,9 @@ func decodeBody(r *http.Request, out interface{}) (codec.Codec, error) {
 			if err := json.Unmarshal(bodyBytes, out); err != nil {
 				return nil, err
 			}
-			return codec.NewJSON(), nil
+			return codec.NewJson(), nil
 		}
-	case "application/msgpack":
+	case "application/vnd.msgpack":
 		{
 			bodyBytes, err := io.ReadAll(r.Body)
 			if err != nil {
@@ -139,7 +139,7 @@ func (controller *Controller) RunAction(appId int, userId int, actionName string
 func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Request) {
 	// performing initial validations
 	if r.Method != "POST" {
-		encodeResponse(w, codec.NewJSON(), 400, map[string]interface{}{"error": "Invalid method", "result": nil})
+		encodeResponse(w, codec.NewJson(), 400, map[string]interface{}{"error": "Invalid method", "result": nil})
 		return
 	}
 
@@ -149,13 +149,13 @@ func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Req
 	rc, err := decodeBody(r, &actionInfo)
 	if err != nil {
 		if strings.Contains(err.Error(), "unsupported content-type") {
-			// Unknown Content-Type: respond with a JSON error payload via the
-			// JSON codec. It is irrelevant here because no MsgPack consumer
+			// Unknown Content-Type: respond with a Json error payload via the
+			// Json codec. It is irrelevant here because no MsgPack consumer
 			// would be present in this situation.
-			encodeResponse(w, codec.NewJSON(), 415, map[string]interface{}{"error": "Unsupported Media Type"})
+			encodeResponse(w, codec.NewJson(), 415, map[string]interface{}{"error": "Unsupported Media Type"})
 			return
 		}
-		encodeResponse(w, codec.NewJSON(), 400, map[string]interface{}{"error": "Could not decode request body", "result": nil})
+		encodeResponse(w, codec.NewJson(), 400, map[string]interface{}{"error": "Could not decode request body", "result": nil})
 		return
 	}
 
@@ -180,9 +180,9 @@ func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Req
 	encodeResponse(w, rc, 200, payload)
 }
 
-// escapeJSON escapes special characters in a string for safe JSON embedding.
-// Returns JSON-encoded string.
-func escapeJSON(s string) string {
+// escapeJson escapes special characters in a string for safe Json embedding.
+// Returns Json-encoded string.
+func escapeJson(s string) string {
 	data, err := json.Marshal(s)
 	if err != nil {
 		return "\"\""
