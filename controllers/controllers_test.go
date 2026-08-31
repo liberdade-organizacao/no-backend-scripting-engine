@@ -1,9 +1,16 @@
 package controllers
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
+	"liberdade.bsb.br/baas/scripting/common/codec"
 	"liberdade.bsb.br/baas/scripting/database"
 	"math/rand"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -535,5 +542,213 @@ func TestScriptsCanGetUserId(t *testing.T) {
 	}
 	if result != expectedResult {
 		t.Fatalf("Failed to download with user ID: '%s'", result)
+	}
+}
+
+const HTTP_SCRIPT = `
+function main(params)
+  return "http-result"
+end
+`
+
+func newHTTPTestServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	controller := NewController()
+	srv := httptest.NewServer(http.HandlerFunc(controller.HandleRunAction))
+	t.Cleanup(func() {
+		controller.Close()
+		srv.Close()
+	})
+	return srv
+}
+
+func baseHTTPRequestPayload(t *testing.T) map[string]interface{} {
+	t.Helper()
+	_, ids, scriptName, err := setupBasicTest(HTTP_SCRIPT)
+	if err != nil {
+		t.Fatalf("failed to prepare database for HTTP test: %s", err)
+	}
+	return map[string]interface{}{
+		"app_id":       float64(ids["app_id"]),
+		"user_id":      float64(ids["user_id"]),
+		"action_name":  scriptName,
+		"action_param": "some_action_parameter",
+	}
+}
+
+func postRaw(t *testing.T, srv *httptest.Server, contentType string, body []byte) (*http.Response, []byte) {
+	t.Helper()
+	req, err := http.NewRequest("POST", srv.URL, bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("failed to build request: %s", err)
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("failed to send request: %s", err)
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("failed to read response body: %s", err)
+	}
+	return resp, respBody
+}
+
+func toJson(v map[string]interface{}) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(fmt.Sprintf("failed to marshal payload: %s", err))
+	}
+	return b
+}
+
+func encodeMsgpack(t *testing.T, v map[string]interface{}) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := codec.NewMsgPack().Encode(&buf, v); err != nil {
+		t.Fatalf("failed to encode msgpack payload: %s", err)
+	}
+	return buf.Bytes()
+}
+
+func mustMarshalJson(v interface{}) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Sprintf("%v", v)
+	}
+	return string(b)
+}
+
+func TestHandleRunAction_Json(t *testing.T) {
+	srv := newHTTPTestServer(t)
+	body := toJson(baseHTTPRequestPayload(t))
+
+	resp, respBody := postRaw(t, srv, "application/json", body)
+	if resp.StatusCode != 200 {
+		t.Fatalf("expected status 200, got %d: %s", resp.StatusCode, respBody)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "application/json" {
+		t.Fatalf("expected Content-Type application/json, got %q", got)
+	}
+
+	want := map[string]interface{}{"error": nil, "result": "http-result"}
+	var got map[string]interface{}
+	if err := json.Unmarshal(respBody, &got); err != nil {
+		t.Fatalf("response body is not valid Json: %s", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected response body\n got: %s\nwant: %s", mustMarshalJson(got), mustMarshalJson(want))
+	}
+}
+
+func TestHandleRunAction_MsgPack(t *testing.T) {
+	srv := newHTTPTestServer(t)
+	body := encodeMsgpack(t, baseHTTPRequestPayload(t))
+
+	resp, respBody := postRaw(t, srv, "application/vnd.msgpack", body)
+	if resp.StatusCode != 200 {
+		t.Fatalf("expected status 200, got %d: %s", resp.StatusCode, respBody)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "application/vnd.msgpack" {
+		t.Fatalf("expected Content-Type application/vnd.msgpack, got %q", got)
+	}
+
+	var got map[string]interface{}
+	if err := codec.NewMsgPack().Decode(bytes.NewReader(respBody), &got); err != nil {
+		t.Fatalf("response body is not valid msgpack: %s", err)
+	}
+
+	want := map[string]interface{}{"error": nil, "result": "http-result"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("msgpack round-trip mismatch\n got: %s\nwant: %s", mustMarshalJson(got), mustMarshalJson(want))
+	}
+}
+
+func TestHandleRunAction_PropertiesMsgPackSmaller(t *testing.T) {
+	// With only a few keys MsgPack offers no size advantage over Json; add
+	// several repeated keys so string interning activates and MsgPack wins.
+	payload := map[string]interface{}{}
+	for k, v := range baseHTTPRequestPayload(t) {
+		payload[k] = v
+	}
+	for i := 0; i < 5; i++ {
+		payload[fmt.Sprintf("repeated_key_%d", i)] = "some_action_parameter"
+	}
+
+	jsonBody, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("failed to marshal json payload: %s", err)
+	}
+	msgpackBody := encodeMsgpack(t, payload)
+
+	if len(msgpackBody) >= len(jsonBody) {
+		t.Fatalf("msgpack payload (%d bytes) should be smaller than json payload (%d bytes)", len(msgpackBody), len(jsonBody))
+	}
+}
+
+func TestHandleRunAction_UnknownContentType(t *testing.T) {
+	srv := newHTTPTestServer(t)
+	body := toJson(baseHTTPRequestPayload(t))
+
+	resp, respBody := postRaw(t, srv, "application/xml", body)
+	if resp.StatusCode != 415 {
+		t.Fatalf("expected status 415, got %d: %s", resp.StatusCode, respBody)
+	}
+}
+
+func TestHandleRunAction_NoContentType(t *testing.T) {
+	srv := newHTTPTestServer(t)
+	body := toJson(baseHTTPRequestPayload(t))
+
+	resp, respBody := postRaw(t, srv, "", body)
+	if resp.StatusCode != 415 {
+		t.Fatalf("expected status 415, got %d: %s", resp.StatusCode, respBody)
+	}
+}
+
+func TestHandleRunAction_BadJson(t *testing.T) {
+	srv := newHTTPTestServer(t)
+
+	resp, respBody := postRaw(t, srv, "application/json", []byte("{not json}"))
+	if resp.StatusCode != 400 {
+		t.Fatalf("expected status 400, got %d: %s", resp.StatusCode, respBody)
+	}
+	if !bytes.Contains(respBody, []byte("Could not decode request body")) {
+		t.Fatalf("expected response to mention 'Could not decode request body', got: %s", respBody)
+	}
+}
+
+func TestHandleRunAction_BadMsgPack(t *testing.T) {
+	srv := newHTTPTestServer(t)
+
+	resp, respBody := postRaw(t, srv, "application/vnd.msgpack", []byte("random garbage bytes"))
+	if resp.StatusCode != 400 {
+		t.Fatalf("expected status 400, got %d: %s", resp.StatusCode, respBody)
+	}
+}
+
+func TestHandleRunAction_BinaryPayload(t *testing.T) {
+	srv := newHTTPTestServer(t)
+	msgpackPayload := baseHTTPRequestPayload(t)
+	body := encodeMsgpack(t, msgpackPayload)
+
+	resp, respBody := postRaw(t, srv, "application/vnd.msgpack", body)
+	if resp.StatusCode != 200 {
+		t.Fatalf("expected status 200, got %d: %s", resp.StatusCode, respBody)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "application/vnd.msgpack" {
+		t.Fatalf("expected Content-Type application/vnd.msgpack, got %q", got)
+	}
+
+	var got map[string]interface{}
+	if err := codec.NewMsgPack().Decode(bytes.NewReader(respBody), &got); err != nil {
+		t.Fatalf("response body is not valid msgpack: %s", err)
+	}
+	want := map[string]interface{}{"error": nil, "result": "http-result"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("binary msgpack payload mismatch\n got: %s\nwant: %s", mustMarshalJson(got), mustMarshalJson(want))
 	}
 }

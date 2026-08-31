@@ -9,7 +9,7 @@ func TestDatabasePing(t *testing.T) {
 	connection := NewDatabase()
 	defer connection.Close()
 	if err := connection.CheckDatabase(); err != nil {
-		t.Errorf("Database connection is not working: %#v\n", err)
+		t.Errorf("Database connection is not working: %s -> %#v\n", connection.Connection, err)
 		return
 	}
 }

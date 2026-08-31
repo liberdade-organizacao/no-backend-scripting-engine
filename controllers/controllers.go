@@ -1,13 +1,17 @@
 package controllers
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"liberdade.bsb.br/baas/scripting/common"
-	"liberdade.bsb.br/baas/scripting/database"
 	"net/http"
+	"strings"
+
+	"liberdade.bsb.br/baas/scripting/common"
+	"liberdade.bsb.br/baas/scripting/common/codec"
+	"liberdade.bsb.br/baas/scripting/database"
 )
 
 // Struct to encapsulate required mechanisms to run this service
@@ -29,6 +33,52 @@ func NewController() *Controller {
 // Destroys a controller
 func (controller *Controller) Close() {
 	controller.Connection.Close()
+}
+
+// encodeResponse serializes payload using enc and writes it to w with status and
+// the matching Content-Type header.
+func encodeResponse(w http.ResponseWriter, enc codec.Codec, status int, payload map[string]interface{}) {
+	w.Header().Set("Content-Type", enc.ContentType())
+	w.WriteHeader(status)
+	_ = enc.Encode(w, payload)
+}
+
+// decodeBody reads the request body, selects the appropriate codec based on
+// Content-Type (stripping charset and lower-casing), and decodes into out.
+// Returns the codec used or an error.
+func decodeBody(r *http.Request, out interface{}) (codec.Codec, error) {
+	ct := r.Header.Get("Content-Type")
+	if idx := strings.IndexByte(ct, ';'); idx >= 0 {
+		ct = strings.TrimSpace(ct[:idx])
+	}
+	ct = strings.ToLower(ct)
+
+	switch ct {
+	case "application/json":
+		{
+			bodyBytes, err := io.ReadAll(r.Body)
+			if err != nil {
+				return nil, err
+			}
+			if err := json.Unmarshal(bodyBytes, out); err != nil {
+				return nil, err
+			}
+			return codec.NewJson(), nil
+		}
+	case "application/vnd.msgpack":
+		{
+			bodyBytes, err := io.ReadAll(r.Body)
+			if err != nil {
+				return nil, err
+			}
+			mpCodec := codec.NewMsgPack()
+			if err := mpCodec.Decode(bytes.NewReader(bodyBytes), out); err != nil {
+				return nil, err
+			}
+			return mpCodec, nil
+		}
+	}
+	return nil, fmt.Errorf("unsupported content-type: %s", ct)
 }
 
 /***********************
@@ -89,23 +139,26 @@ func (controller *Controller) RunAction(appId int, userId int, actionName string
 func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Request) {
 	// performing initial validations
 	if r.Method != "POST" {
-		io.WriteString(w, `{"error":"Invalid method"}`)
+		encodeResponse(w, codec.NewJson(), 400, map[string]interface{}{"error": "Invalid method", "result": nil})
 		return
 	}
 
 	// loading request parameters (action name, app id, action parameters)
 	defer r.Body.Close()
-	bodyBytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		io.WriteString(w, fmt.Sprintf("%s", err))
-		return
-	}
 	actionInfo := make(map[string]interface{})
-	err = json.Unmarshal(bodyBytes, &actionInfo)
+	rc, err := decodeBody(r, &actionInfo)
 	if err != nil {
-		io.WriteString(w, `{"error":"Failed to parse JSON"}`)
+		if strings.Contains(err.Error(), "unsupported content-type") {
+			// Unknown Content-Type: respond with a Json error payload via the
+			// Json codec. It is irrelevant here because no MsgPack consumer
+			// would be present in this situation.
+			encodeResponse(w, codec.NewJson(), 415, map[string]interface{}{"error": "Unsupported Media Type"})
+			return
+		}
+		encodeResponse(w, codec.NewJson(), 400, map[string]interface{}{"error": "Could not decode request body", "result": nil})
 		return
 	}
+
 	appId := int(actionInfo["app_id"].(float64))
 	userId := int(actionInfo["user_id"].(float64))
 	actionName := actionInfo["action_name"].(string)
@@ -113,22 +166,32 @@ func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Req
 
 	err = controller.CheckPermission(appId, userId, actionName)
 	if err != nil {
-		io.WriteString(w, `{"error":"User does not required permissions to run this action"}`)
+		encodeResponse(w, rc, 400, map[string]interface{}{"error": "User does not have required permissions to run this action", "result": nil})
 		return
 	}
 
 	result, err := controller.RunAction(appId, userId, actionName, actionParam)
 	if err != nil {
-		io.WriteString(w, `{"error":"Could not run Lua script"}`)
+		encodeResponse(w, rc, 500, map[string]interface{}{"error": "Could not run Lua script", "result": nil})
 		return
 	}
 
-	payload := fmt.Sprintf(`{"error":null,"result":"%s"}`, result)
-	io.WriteString(w, payload)
-	return
+	payload := map[string]interface{}{"error": nil, "result": result}
+	encodeResponse(w, rc, 200, payload)
+}
+
+// escapeJson escapes special characters in a string for safe Json embedding.
+// Returns Json-encoded string.
+func escapeJson(s string) string {
+	data, err := json.Marshal(s)
+	if err != nil {
+		return "\"\""
+	}
+	return string(data)
 }
 
 // Checks if the service is running well
 func (controller *Controller) HandleCheckHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	io.WriteString(w, "OK")
 }
