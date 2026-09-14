@@ -85,6 +85,30 @@ func decodeBody(r *http.Request, out interface{}) (codec.Codec, error) {
  * AUXILIAR OPERATIONS *
  ***********************/
 
+// ErrActionNotFound signals that no action with the given name exists.
+var ErrActionNotFound = errors.New("action not found")
+
+// LookUpActionScript fetches the script for an action by name or returns
+// ErrActionNotFound when no matching action exists.
+func (controller *Controller) LookUpActionScript(appId int, actionName string) (string, error) {
+	query := fmt.Sprintf("SELECT script FROM actions WHERE app_id='%d' AND name='%s';", appId, actionName)
+	actionScript := ""
+	rows, err := controller.Connection.Query(query)
+	if err != nil {
+		return "", err
+	}
+	found := false
+	for rows.Next() {
+		rows.Scan(&actionScript)
+		found = true
+	}
+	rows.Close()
+	if !found {
+		return "", ErrActionNotFound
+	}
+	return actionScript, nil
+}
+
 // Checks if the user has permissions to run the given action in this app
 func (controller *Controller) CheckPermission(appId int, userId int, actionName string) error {
 	result := errors.New("user doesn't have permissions to run this action")
@@ -110,16 +134,10 @@ func (controller *Controller) CheckPermission(appId int, userId int, actionName 
 // Runs an action as identified by an app, a user, and the action name.
 // The action may accept parameters as input
 func (controller *Controller) RunAction(appId int, userId int, actionName string, params string) (string, error) {
-	query := fmt.Sprintf("SELECT script FROM actions WHERE app_id='%d' AND name='%s';", appId, actionName)
-	actionScript := ""
-	rows, err := controller.Connection.Query(query)
+	actionScript, err := controller.LookUpActionScript(appId, actionName)
 	if err != nil {
-		panic(err)
+		return "", err
 	}
-	for rows.Next() {
-		rows.Scan(&actionScript)
-	}
-	rows.Close()
 
 	return common.RunLuaActionTimeout(appId, userId, actionScript, params, controller.Connection)
 }
@@ -163,6 +181,11 @@ func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Req
 	userId := int(actionInfo["user_id"].(float64))
 	actionName := actionInfo["action_name"].(string)
 	actionParam := actionInfo["action_param"].(string)
+
+	if _, err := controller.LookUpActionScript(appId, actionName); errors.Is(err, ErrActionNotFound) {
+		encodeResponse(w, rc, 404, map[string]interface{}{"error": "Action not found", "result": nil})
+		return
+	}
 
 	err = controller.CheckPermission(appId, userId, actionName)
 	if err != nil {

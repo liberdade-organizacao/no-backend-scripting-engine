@@ -709,6 +709,29 @@ func TestHandleRunAction_NoContentType(t *testing.T) {
 	}
 }
 
+func TestHandleRunAction_ActionNotFound(t *testing.T) {
+	srv := newHTTPTestServer(t)
+	payload := baseHTTPRequestPayload(t)
+	payload["action_name"] = "does_not_exist.lua"
+
+	resp, respBody := postRaw(t, srv, "application/json", toJson(payload))
+	if resp.StatusCode != 404 {
+		t.Fatalf("expected status 404, got %d: %s", resp.StatusCode, respBody)
+	}
+}
+
+func TestHandleRunAction_ActionNotFound_Returns404WithoutPermissions(t *testing.T) {
+	srv := newHTTPTestServer(t)
+	payload := baseHTTPRequestPayload(t)
+	payload["action_name"] = "does_not_exist.lua"
+	payload["user_id"] = float64(999999)
+
+	resp, respBody := postRaw(t, srv, "application/json", toJson(payload))
+	if resp.StatusCode != 404 {
+		t.Fatalf("expected status 404, got %d: %s", resp.StatusCode, respBody)
+	}
+}
+
 func TestHandleRunAction_BadJson(t *testing.T) {
 	srv := newHTTPTestServer(t)
 
