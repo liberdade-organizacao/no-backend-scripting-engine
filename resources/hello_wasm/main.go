@@ -33,6 +33,12 @@ func stringToPtr(s string) (uint32, uint32) {
  * MAIN FUNCTIONS *
  ******************/
 
+//go:wasmexport allocate
+func Allocate(size uint32) uint32 {
+	ptr := C.malloc(C.size_t(size))
+	return uint32(uintptr(ptr))
+}
+
 //go:wasmexport tic80
 func Start(ptr, size uint32) uint64 {
 	inlet := ptrToString(ptr, size)
