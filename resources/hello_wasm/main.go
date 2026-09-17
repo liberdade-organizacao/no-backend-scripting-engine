@@ -44,7 +44,7 @@ func Deallocate(pointer uint32) {
 	C.free(unsafe.Pointer(uintptr(pointer)))
 }
 
-//go:wasmexport tic80
+//go:wasmexport boot
 func Start(ptr, size uint32) uint64 {
 	inlet := ptrToString(ptr, size)
 	outlet := HelloWasm(inlet)
