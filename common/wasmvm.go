@@ -31,8 +31,9 @@ func RunWasmAction(appId int, userId int, actionBinary []byte, inlet string, con
 	}
 
 	// allocating memory inside the guest for the input data and copying it in
-	inletBytes := []byte(inlet)
 	allocate := mod.ExportedFunction("allocate")
+	deallocate := mod.ExportedFunction("deallocate")
+	inletBytes := []byte(inlet)
 	allocResults, err := allocate.Call(ctx, uint64(len(inletBytes)))
 	if err != nil {
 		fmt.Printf("failed to allocate guest memory: %#v\n", err)
@@ -43,6 +44,7 @@ func RunWasmAction(appId int, userId int, actionBinary []byte, inlet string, con
 	if !mod.Memory().Write(inletPointer, inletBytes) {
 		return "", errors.New("failed to write input into guest memory")
 	}
+	defer deallocate.Call(ctx, uint64(inletPointer))
 
 	// calling start function
 	start := mod.ExportedFunction("tic80")

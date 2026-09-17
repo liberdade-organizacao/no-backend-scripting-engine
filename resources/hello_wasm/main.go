@@ -39,6 +39,11 @@ func Allocate(size uint32) uint32 {
 	return uint32(uintptr(ptr))
 }
 
+//go:wasmexport deallocate
+func Deallocate(pointer uint32) {
+	C.free(unsafe.Pointer(uintptr(pointer)))
+}
+
 //go:wasmexport tic80
 func Start(ptr, size uint32) uint64 {
 	inlet := ptrToString(ptr, size)
