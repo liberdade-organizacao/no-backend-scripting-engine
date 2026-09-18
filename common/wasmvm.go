@@ -3,11 +3,17 @@ package common
 import (
 	"context"
 	"errors"
+	"time"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	"liberdade.bsb.br/baas/scripting/database"
 )
+
+type WasmActionResult struct {
+	Result string
+	Error  error
+}
 
 func PointerToString(mod api.Module, packedPair uint64) (string, bool) {
 	ptr := uint32(packedPair >> uint64(32))
@@ -56,5 +62,26 @@ func RunWasmAction(appId int, userId int, actionBinary []byte, inlet string, con
 	}
 
 	return outlet, nil
+}
+
+func runWasmActionWrapped(appId int, userId int, actionBinary []byte, inlet string, connection *database.Conn) WasmActionResult {
+	result, err := RunWasmAction(appId, userId, actionBinary, inlet, connection)
+	return WasmActionResult{
+		Result: result,
+		Error:  err,
+	}
+}
+
+func RunWasmActionTimeout(appId int, userId int, actionBinary []byte, inlet string, connection *database.Conn) (string, error) {
+	result := make(chan WasmActionResult, 1)
+	go func() {
+		result <- runWasmActionWrapped(appId, userId, actionBinary, inlet, connection)
+	}()
+	select {
+	case <-time.After(5 * time.Second):
+		return "", errors.New("5 seconds timeout")
+	case result := <-result:
+		return result.Result, result.Error
+	}
 }
 
