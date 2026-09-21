@@ -32,7 +32,7 @@ end
 `
 
 // Prepares the database for a test run. This assumes the required migrations have been executed already
-func prepareDatabase(connection *database.Conn, clientEmail string, scriptName string, script string) (map[string]int, error) {
+func prepareDatabase(connection *database.Conn, clientEmail string, scriptName string, script []byte) (map[string]int, error) {
 	state := make(map[string]int)
 
 	if err := connection.CheckDatabase(); err != nil {
@@ -106,24 +106,24 @@ func prepareDatabase(connection *database.Conn, clientEmail string, scriptName s
 	return state, nil
 }
 
-func setupBasicTest(script string) (*Controller, map[string]int, string, string, error) {
+func setupBasicTest(script []byte, ext string) (*Controller, map[string]int, string, []byte, error) {
 	rand.Seed(time.Now().UnixNano())
 	controller := NewController()
 	clientEmail := fmt.Sprintf("%s@go.dev", randString(5))
-	scriptName := fmt.Sprintf("L%s.lua", randString(5))
+	scriptName := fmt.Sprintf("L%s.%s", randString(5), ext)
 	ids, err := prepareDatabase(controller.Connection, clientEmail, scriptName, script)
 	if err != nil {
-		return controller, ids, scriptName, "", err
+		return controller, ids, scriptName, nil, err
 	}
 	scriptValue, err := controller.LookUpActionScript(ids["app_id"], scriptName)
 	if err != nil {
-		return controller, ids, scriptName, "", err
+		return controller, ids, scriptName, nil, err
 	}
 	return controller, ids, scriptName, scriptValue, nil
 }
 
 func TestMainFlow(t *testing.T) {
-	controller, ids, scriptName, scriptValue, err := setupBasicTest(SCRIPT)
+	controller, ids, scriptName, scriptValue, err := setupBasicTest([]byte(SCRIPT), "lua")
 	if err != nil {
 		t.Fatalf("Failed to prepare database: %s", err)
 		return
@@ -146,7 +146,7 @@ func TestMainFlow(t *testing.T) {
 		t.Errorf("Inexistent user has permissions to run an action")
 	}
 
-	result, err := controller.RunAction(appId, userId, scriptValue, actionParam)
+	result, err := controller.RunLuaAction(appId, userId, string(scriptValue), actionParam)
 	if err != nil {
 		t.Fatalf("Failed to execute script: %s", err)
 		return
@@ -187,7 +187,7 @@ end
 `
 
 func TestScriptsCanUploadAndDownloadFiles(t *testing.T) {
-	controller, ids, _, scriptValue, err := setupBasicTest(UPLOAD_SCRIPT)
+	controller, ids, _, scriptValue, err := setupBasicTest([]byte(UPLOAD_SCRIPT), "lua")
 	if err != nil {
 		t.Fatalf("Failed to prepare database: %s", err)
 		return
@@ -197,7 +197,7 @@ func TestScriptsCanUploadAndDownloadFiles(t *testing.T) {
 	appId := ids["app_id"]
 	userId := ids["user_id"]
 	actionParam := "filename=greeting.txt&contents=hello"
-	result, err := controller.RunAction(appId, userId, scriptValue, actionParam)
+	result, err := controller.RunLuaAction(appId, userId, string(scriptValue), actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run upload action: %s", err)
 	}
@@ -213,7 +213,7 @@ func TestScriptsCanUploadAndDownloadFiles(t *testing.T) {
 	}
 
 	actionParam = "filename=greeting.txt"
-	result, err = controller.RunAction(appId, userId, DOWNLOAD_SCRIPT, actionParam)
+	result, err = controller.RunLuaAction(appId, userId, DOWNLOAD_SCRIPT, actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run download action: %s", err)
 	}
@@ -243,7 +243,7 @@ end
 `
 
 func TestScriptsCanDeleteFiles(t *testing.T) {
-	controller, ids, _, scriptValue, err := setupBasicTest(UPLOAD_SCRIPT)
+	controller, ids, _, scriptValue, err := setupBasicTest([]byte(UPLOAD_SCRIPT), "lua")
 	if err != nil {
 		t.Fatalf("Failed to prepare database: %s", err)
 		return
@@ -255,7 +255,7 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 	appId := ids["app_id"]
 	userId := ids["user_id"]
 	actionParam := fmt.Sprintf("filename=%s&contents=I want to delete files", filename)
-	result, err := controller.RunAction(appId, userId, scriptValue, actionParam)
+	result, err := controller.RunLuaAction(appId, userId, string(scriptValue), actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run upload action: %s", err)
 	}
@@ -274,7 +274,7 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 	}
 
 	actionParam = filename
-	result, err = controller.RunAction(appId, userId, CHECK_SCRIPT, actionParam)
+	result, err = controller.RunLuaAction(appId, userId, CHECK_SCRIPT, actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run check action: %s", err)
 	}
@@ -291,7 +291,7 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 	rows.Close()
 
 	actionParam = filename
-	result, err = controller.RunAction(appId, userId, DELETE_SCRIPT, actionParam)
+	result, err = controller.RunLuaAction(appId, userId, DELETE_SCRIPT, actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run delete action: %s", err)
 	}
@@ -308,7 +308,7 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 	rows.Close()
 
 	actionParam = filename
-	result, err = controller.RunAction(appId, userId, CHECK_SCRIPT, actionParam)
+	result, err = controller.RunLuaAction(appId, userId, CHECK_SCRIPT, actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run check action again: %s", err)
 	}
@@ -325,7 +325,7 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 	rows.Close()
 
 	actionParam = fmt.Sprintf("filename=%s", filename)
-	result, err = controller.RunAction(appId, userId, DOWNLOAD_SCRIPT, actionParam)
+	result, err = controller.RunLuaAction(appId, userId, DOWNLOAD_SCRIPT, actionParam)
 	if err != nil {
 		t.Fatalf("Failed to fail a file download: %#v", err)
 	}
@@ -369,7 +369,7 @@ end
 `
 
 func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
-	controller, ids, _, scriptValue, err := setupBasicTest(UPLOAD_APP_FILE_SCRIPT)
+	controller, ids, _, scriptValue, err := setupBasicTest([]byte(UPLOAD_APP_FILE_SCRIPT), "lua")
 	if err != nil {
 		t.Fatalf("Failed to prepare database: %s", err)
 		return
@@ -382,7 +382,7 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 	userId := ids["user_id"]
 	contents := "Coraline is one of the best movies ever"
 	actionParam := fmt.Sprintf("filename=%s&contents=%s", filename, contents)
-	result, err := controller.RunAction(appId, userId, scriptValue, actionParam)
+	result, err := controller.RunLuaAction(appId, userId, string(scriptValue), actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run upload app file action: %s", err)
 	}
@@ -400,7 +400,7 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 	rows.Close()
 
 	actionParam = filename
-	result, err = controller.RunAction(appId, userId, DOWNLOAD_APP_FILE_SCRIPT, actionParam)
+	result, err = controller.RunLuaAction(appId, userId, DOWNLOAD_APP_FILE_SCRIPT, actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run download app file action: %s", err)
 	}
@@ -416,7 +416,7 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 	}
 	rows.Close()
 
-	result, err = controller.RunAction(appId, userId, DELETE_APP_FILE_SCRIPT, actionParam)
+	result, err = controller.RunLuaAction(appId, userId, DELETE_APP_FILE_SCRIPT, actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run delete app file action: %s", err)
 	}
@@ -433,7 +433,7 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 		rows.Close()
 	}
 
-	result, err = controller.RunAction(appId, userId, DOWNLOAD_APP_FILE_SCRIPT, actionParam)
+	result, err = controller.RunLuaAction(appId, userId, DOWNLOAD_APP_FILE_SCRIPT, actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run download app file action again: %s", err)
 	}
@@ -455,7 +455,7 @@ end
 `
 
 func TestScriptsCanConvertBetweenUserEmailsAndIds(t *testing.T) {
-	controller, ids, _, scriptValue, err := setupBasicTest(ID_TO_EMAIL_SCRIPT)
+	controller, ids, _, scriptValue, err := setupBasicTest([]byte(ID_TO_EMAIL_SCRIPT), "lua")
 	if err != nil {
 		t.Fatalf("Failed to prepare database: %s", err)
 		return
@@ -466,7 +466,7 @@ func TestScriptsCanConvertBetweenUserEmailsAndIds(t *testing.T) {
 	userId := ids["user_id"]
 	expectedResult := fmt.Sprintf("%d", userId)
 	actionParam := expectedResult
-	result, err := controller.RunAction(appId, userId, scriptValue, actionParam)
+	result, err := controller.RunLuaAction(appId, userId, string(scriptValue), actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run 'user id to email' action: %s", err)
 	}
@@ -482,7 +482,7 @@ func TestScriptsCanConvertBetweenUserEmailsAndIds(t *testing.T) {
 	}
 
 	actionParam = userEmail
-	result, err = controller.RunAction(appId, userId, EMAIL_TO_ID_SCRIPT, actionParam)
+	result, err = controller.RunLuaAction(appId, userId, EMAIL_TO_ID_SCRIPT, actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run 'user email to id' action: %s", err)
 	}
@@ -511,7 +511,7 @@ end
 `
 
 func TestScriptsCanGetUserId(t *testing.T) {
-	controller, ids, _, scriptValue, err := setupBasicTest(USER_ID_SCRIPT)
+	controller, ids, _, scriptValue, err := setupBasicTest([]byte(USER_ID_SCRIPT), "lua")
 	if err != nil {
 		t.Fatalf("Failed to prepare database: %s", err)
 		return
@@ -522,7 +522,7 @@ func TestScriptsCanGetUserId(t *testing.T) {
 	userId := ids["user_id"]
 	expectedResult := fmt.Sprintf("%d", userId)
 	actionParam := "nope"
-	result, err := controller.RunAction(appId, userId, scriptValue, actionParam)
+	result, err := controller.RunLuaAction(appId, userId, string(scriptValue), actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run 'get user id' action: %s", err)
 	}
@@ -540,7 +540,7 @@ func TestScriptsCanGetUserId(t *testing.T) {
 	}
 
 	expectedResult = "some contents here"
-	result, err = controller.RunAction(appId, userId, DOWNLOAD_WITH_USER_ID_SCRIPT, actionParam)
+	result, err = controller.RunLuaAction(appId, userId, DOWNLOAD_WITH_USER_ID_SCRIPT, actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run 'download with user ID script' action: %s", err)
 	}
@@ -568,7 +568,7 @@ func newHTTPTestServer(t *testing.T) *httptest.Server {
 
 func baseHTTPRequestPayload(t *testing.T) map[string]interface{} {
 	t.Helper()
-	_, ids, scriptName, _, err := setupBasicTest(HTTP_SCRIPT)
+	_, ids, scriptName, _, err := setupBasicTest([]byte(HTTP_SCRIPT), "lua")
 	if err != nil {
 		t.Fatalf("failed to prepare database for HTTP test: %s", err)
 	}
@@ -779,3 +779,4 @@ func TestHandleRunAction_BinaryPayload(t *testing.T) {
 		t.Fatalf("binary msgpack payload mismatch\n got: %s\nwant: %s", mustMarshalJson(got), mustMarshalJson(want))
 	}
 }
+
