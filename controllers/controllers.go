@@ -85,15 +85,16 @@ func decodeBody(r *http.Request, out interface{}) (codec.Codec, error) {
  * AUXILIAR OPERATIONS *
  ***********************/
 
+var ErrActionNotFound = errors.New("action not found")
+
 // LookUpActionScript fetches the script for an action by name or returns
 // ErrActionNotFound when no matching action exists.
-func (controller *Controller) LookUpActionScript(appId int, actionName string) (string, error) {
-	// XXX this function should return ([]byte, error) so the WASM actions can be executed
+func (controller *Controller) LookUpActionScript(appId int, actionName string) ([]byte, error) {
 	query := fmt.Sprintf("SELECT script FROM actions WHERE app_id='%d' AND name='%s';", appId, actionName)
-	actionScript := ""
+	var actionScript []byte
 	rows, err := controller.Connection.Query(query)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	found := false
 	for rows.Next() {
@@ -102,7 +103,7 @@ func (controller *Controller) LookUpActionScript(appId int, actionName string) (
 	}
 	rows.Close()
 	if !found {
-		return "", errors.New("action not found")
+		return nil, ErrActionNotFound
 	}
 	return actionScript, nil
 }
@@ -139,6 +140,12 @@ func (controller *Controller) RunLuaAction(appId int, userId int, actionScript s
 // The action may accept parameters as input
 func (controller *Controller) RunWasmAction(appId int, userId int, actionBinary []byte, params string) (string, error) {
 	return common.RunWasmActionTimeout(appId, userId, actionBinary, params, controller.Connection)
+}
+
+// Generic entrypoint to run an action
+func (controller *Controller) RunAction(appId int, userId int, action []byte, params string) (string, error) {
+	// XXX if is lua action
+	return controller.RunLuaAction(appId, userId, string(action), params)
 }
 
 /************
@@ -197,9 +204,7 @@ func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// XXX check which kind of action to run
-
-	result, err := controller.RunLuaAction(appId, userId, actionScript, actionParam)
+	result, err := controller.RunAction(appId, userId, actionScript, actionParam)
 	if err != nil {
 		encodeResponse(w, rc, 500, map[string]interface{}{"error": "Could not run Lua script", "result": nil})
 		return
