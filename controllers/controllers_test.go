@@ -146,7 +146,7 @@ func TestMainFlow(t *testing.T) {
 		t.Errorf("Inexistent user has permissions to run an action")
 	}
 
-	result, err := controller.RunAction(appId, userId, scriptValue, actionParam)
+	result, err := controller.RunLuaAction(appId, userId, scriptValue, actionParam)
 	if err != nil {
 		t.Fatalf("Failed to execute script: %s", err)
 		return
@@ -197,7 +197,7 @@ func TestScriptsCanUploadAndDownloadFiles(t *testing.T) {
 	appId := ids["app_id"]
 	userId := ids["user_id"]
 	actionParam := "filename=greeting.txt&contents=hello"
-	result, err := controller.RunAction(appId, userId, scriptValue, actionParam)
+	result, err := controller.RunLuaAction(appId, userId, scriptValue, actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run upload action: %s", err)
 	}
@@ -213,7 +213,7 @@ func TestScriptsCanUploadAndDownloadFiles(t *testing.T) {
 	}
 
 	actionParam = "filename=greeting.txt"
-	result, err = controller.RunAction(appId, userId, []byte(DOWNLOAD_SCRIPT), actionParam)
+	result, err = controller.RunLuaAction(appId, userId, []byte(DOWNLOAD_SCRIPT), actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run download action: %s", err)
 	}
@@ -255,7 +255,7 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 	appId := ids["app_id"]
 	userId := ids["user_id"]
 	actionParam := fmt.Sprintf("filename=%s&contents=I want to delete files", filename)
-	result, err := controller.RunAction(appId, userId, scriptValue, actionParam)
+	result, err := controller.RunLuaAction(appId, userId, scriptValue, actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run upload action: %s", err)
 	}
@@ -274,7 +274,7 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 	}
 
 	actionParam = filename
-	result, err = controller.RunAction(appId, userId, []byte(CHECK_SCRIPT), actionParam)
+	result, err = controller.RunLuaAction(appId, userId, []byte(CHECK_SCRIPT), actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run check action: %s", err)
 	}
@@ -291,7 +291,7 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 	rows.Close()
 
 	actionParam = filename
-	result, err = controller.RunAction(appId, userId, []byte(DELETE_SCRIPT), actionParam)
+	result, err = controller.RunLuaAction(appId, userId, []byte(DELETE_SCRIPT), actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run delete action: %s", err)
 	}
@@ -308,7 +308,7 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 	rows.Close()
 
 	actionParam = filename
-	result, err = controller.RunAction(appId, userId, []byte(CHECK_SCRIPT), actionParam)
+	result, err = controller.RunLuaAction(appId, userId, []byte(CHECK_SCRIPT), actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run check action again: %s", err)
 	}
@@ -325,7 +325,7 @@ func TestScriptsCanDeleteFiles(t *testing.T) {
 	rows.Close()
 
 	actionParam = fmt.Sprintf("filename=%s", filename)
-	result, err = controller.RunAction(appId, userId, []byte(DOWNLOAD_SCRIPT), actionParam)
+	result, err = controller.RunLuaAction(appId, userId, []byte(DOWNLOAD_SCRIPT), actionParam)
 	if err != nil {
 		t.Fatalf("Failed to fail a file download: %#v", err)
 	}
@@ -382,7 +382,7 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 	userId := ids["user_id"]
 	contents := "Coraline is one of the best movies ever"
 	actionParam := fmt.Sprintf("filename=%s&contents=%s", filename, contents)
-	result, err := controller.RunAction(appId, userId, scriptValue, actionParam)
+	result, err := controller.RunLuaAction(appId, userId, scriptValue, actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run upload app file action: %s", err)
 	}
@@ -400,7 +400,7 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 	rows.Close()
 
 	actionParam = filename
-	result, err = controller.RunAction(appId, userId, []byte(DOWNLOAD_APP_FILE_SCRIPT), actionParam)
+	result, err = controller.RunLuaAction(appId, userId, []byte(DOWNLOAD_APP_FILE_SCRIPT), actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run download app file action: %s", err)
 	}
@@ -416,7 +416,7 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 	}
 	rows.Close()
 
-	result, err = controller.RunAction(appId, userId, []byte(DELETE_APP_FILE_SCRIPT), actionParam)
+	result, err = controller.RunLuaAction(appId, userId, []byte(DELETE_APP_FILE_SCRIPT), actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run delete app file action: %s", err)
 	}
@@ -433,7 +433,7 @@ func TestScriptsCanHandleGlobalAppFiles(t *testing.T) {
 		rows.Close()
 	}
 
-	result, err = controller.RunAction(appId, userId, []byte(DOWNLOAD_APP_FILE_SCRIPT), actionParam)
+	result, err = controller.RunLuaAction(appId, userId, []byte(DOWNLOAD_APP_FILE_SCRIPT), actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run download app file action again: %s", err)
 	}
@@ -466,7 +466,7 @@ func TestScriptsCanConvertBetweenUserEmailsAndIds(t *testing.T) {
 	userId := ids["user_id"]
 	expectedResult := fmt.Sprintf("%d", userId)
 	actionParam := expectedResult
-	result, err := controller.RunAction(appId, userId, scriptValue, actionParam)
+	result, err := controller.RunLuaAction(appId, userId, scriptValue, actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run 'user id to email' action: %s", err)
 	}
@@ -482,7 +482,7 @@ func TestScriptsCanConvertBetweenUserEmailsAndIds(t *testing.T) {
 	}
 
 	actionParam = userEmail
-	result, err = controller.RunAction(appId, userId, []byte(EMAIL_TO_ID_SCRIPT), actionParam)
+	result, err = controller.RunLuaAction(appId, userId, []byte(EMAIL_TO_ID_SCRIPT), actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run 'user email to id' action: %s", err)
 	}
@@ -522,7 +522,7 @@ func TestScriptsCanGetUserId(t *testing.T) {
 	userId := ids["user_id"]
 	expectedResult := fmt.Sprintf("%d", userId)
 	actionParam := "nope"
-	result, err := controller.RunAction(appId, userId, scriptValue, actionParam)
+	result, err := controller.RunLuaAction(appId, userId, scriptValue, actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run 'get user id' action: %s", err)
 	}
@@ -540,7 +540,7 @@ func TestScriptsCanGetUserId(t *testing.T) {
 	}
 
 	expectedResult = "some contents here"
-	result, err = controller.RunAction(appId, userId, []byte(DOWNLOAD_WITH_USER_ID_SCRIPT), actionParam)
+	result, err = controller.RunLuaAction(appId, userId, []byte(DOWNLOAD_WITH_USER_ID_SCRIPT), actionParam)
 	if err != nil {
 		t.Fatalf("Failed to run 'download with user ID script' action: %s", err)
 	}
@@ -779,3 +779,4 @@ func TestHandleRunAction_BinaryPayload(t *testing.T) {
 		t.Fatalf("binary msgpack payload mismatch\n got: %s\nwant: %s", mustMarshalJson(got), mustMarshalJson(want))
 	}
 }
+

@@ -3,6 +3,7 @@ package common
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
@@ -13,6 +14,11 @@ import (
 type WasmActionResult struct {
 	Result string
 	Error  error
+}
+
+func IsWasmAction(name string) bool {
+	parts := strings.Split(name, ".")
+	return parts[len(parts) - 1] == "wasm"
 }
 
 func PointerToString(mod api.Module, packedPair uint64) (string, bool) {
