@@ -132,8 +132,8 @@ func (controller *Controller) CheckPermission(appId int, userId int, actionName 
 
 // Runs an action as identified by an app, a user, and the action name.
 // The action may accept parameters as input
-func (controller *Controller) RunLuaAction(appId int, userId int, actionScript []byte, params string) (string, error) {
-	return common.RunLuaActionTimeout(appId, userId, string(actionScript), params, controller.Connection)
+func (controller *Controller) RunLuaAction(appId int, userId int, actionScript string, params string) (string, error) {
+	return common.RunLuaActionTimeout(appId, userId, actionScript, params, controller.Connection)
 }
 
 // Runs an action as identified by an app, a user, and the action name.
@@ -203,7 +203,7 @@ func (controller *Controller) HandleRunAction(w http.ResponseWriter, r *http.Req
 	if common.IsWasmAction(actionName) {
 		result, err = controller.RunWasmAction(appId, userId, actionScript, actionParam)
 	} else {
-		result, err = controller.RunLuaAction(appId, userId, actionScript, actionParam)
+		result, err = controller.RunLuaAction(appId, userId, string(actionScript), actionParam)
 	}
 	if err != nil {
 		encodeResponse(w, rc, 500, map[string]interface{}{"error": "Could not run Lua script", "result": nil})
