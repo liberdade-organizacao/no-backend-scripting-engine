@@ -3,6 +3,10 @@ default: run
 
 .PHONY: test
 test:
+	# XXX remove these
+	cd resources/rust_wasm_example; make
+	mv resources/rust_wasm_example/main.wasm resources/hello_wasm.wasm
+	# XXX
 	go test ./common/*.go
 	go test ./database/*.go
 	go test ./controllers/*.go
