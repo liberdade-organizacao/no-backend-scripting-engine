@@ -1,4 +1,3 @@
 .PHONY: default
 default:
-	~/.cargo/bin/wasm-pack build --target web
-
+	cargo build --release --target wasm32-unknown-unknown

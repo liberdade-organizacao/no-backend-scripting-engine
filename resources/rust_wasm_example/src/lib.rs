@@ -5,7 +5,6 @@ extern crate wee_alloc;
 use alloc::vec::Vec;
 use std::mem::MaybeUninit;
 use std::slice;
-use wasm_bindgen::prelude::*;
 
 // ##################
 // # BUSINESS LOGIC #
@@ -28,31 +27,28 @@ unsafe fn ptr_to_string(ptr: u32, size: u32) -> String {
     return String::from(utf8);
 }
 
-unsafe fn string_to_ptr(s: &String) -> (u32, u32) {
-    return (s.as_ptr() as u32, s.len() as u32);
-}
-
 // ##################
 // # MAIN FUNCTIONS #
 // ##################
 
-#[wasm_bindgen]
+#[no_mangle]
 pub extern "C" fn allocate(size: u32) -> u32 {
     let vec: Vec<MaybeUninit<u32>> = vec![MaybeUninit::uninit(); size as usize];
     let ptr = Box::into_raw(vec.into_boxed_slice()) as *mut u32;
     return ptr as u32;
 }
 
-#[wasm_bindgen]
+#[no_mangle]
 pub unsafe extern "C" fn deallocate(ptr: u32, size: u32) {
     let _ = Vec::from_raw_parts(ptr as *mut u32, 0, size as usize);
 }
 
-#[wasm_bindgen]
-pub unsafe extern "C" fn boot(ptr: u32, size: u32) -> u32 {
+#[no_mangle]
+pub unsafe extern "C" fn boot(ptr: u32, size: u32) -> u64 {
     let inlet = ptr_to_string(ptr, size);
     let result = hello_wasm(&inlet);
-    let (outlet, _) = string_to_ptr(&result);
-    return outlet;
+    let leaked: &'static mut str = Box::leak(result.into_boxed_str());
+    let (outlet, outlet_size) = (leaked.as_ptr() as u32, leaked.len() as u32);
+    return ((outlet as u64) << 32) | (outlet_size as u64);
 }
 
