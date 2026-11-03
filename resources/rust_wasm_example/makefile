@@ -1,4 +1,4 @@
 .PHONY: default
 default:
-	wasm-pack build --target web
+	~/.cargo/bin/wasm-pack build --target web
 

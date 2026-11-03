@@ -44,7 +44,8 @@ func RunWasmAction(appId int, userId int, actionBinary []byte, inlet string, con
 	allocate := mod.ExportedFunction("allocate")
 	deallocate := mod.ExportedFunction("deallocate")
 	inletBytes := []byte(inlet)
-	allocResults, err := allocate.Call(ctx, uint64(len(inletBytes)))
+	inletBytesLength := uint64(len(inletBytes))
+	allocResults, err := allocate.Call(ctx, inletBytesLength)
 	if err != nil {
 		return "", err
 	}
@@ -53,7 +54,7 @@ func RunWasmAction(appId int, userId int, actionBinary []byte, inlet string, con
 	if !mod.Memory().Write(inletPointer, inletBytes) {
 		return "", errors.New("failed to write into input pointer")
 	}
-	defer deallocate.Call(ctx, uint64(inletPointer))
+	defer deallocate.Call(ctx, uint64(inletPointer), inletBytesLength)
 
 	// calling start function
 	start := mod.ExportedFunction("boot")

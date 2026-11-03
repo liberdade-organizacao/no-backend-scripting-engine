@@ -40,7 +40,7 @@ func Allocate(size uint32) uint32 {
 }
 
 //go:wasmexport deallocate
-func Deallocate(pointer uint32) {
+func Deallocate(pointer uint32, size uint32) {
 	C.free(unsafe.Pointer(uintptr(pointer)))
 }
 
